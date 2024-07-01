@@ -113,7 +113,7 @@ local-cluster-destroy: ## Destroy the local kind cluster
 
 .PHONY: sample-graph
 sample-graph: | local-cluster-deploy build ## Create the kind cluster, start the backend, run the application, delete the cluster
-	cd test/system && export KUBECONFIG=$(ROOT_DIR)/test/setup/${KIND_KUBECONFIG} && $(ROOT_DIR)/bin/kubehound
+	cd test/system && export KUBECONFIG=$(ROOT_DIR)/test/setup/${KIND_KUBECONFIG} && $(ROOT_DIR)/bin/build/kubehound
 	bash test/setup/manage-cluster.sh destroy
 
 .PHONY: help
@@ -131,7 +131,7 @@ thirdparty-licenses: ## Generate the list of 3rd party dependencies and write to
 .PHONY: local-wiki
 local-wiki: ## Generate and serve the mkdocs wiki on localhost
 	poetry install || pip install mkdocs-material mkdocs-awesome-pages-plugin markdown-captions
-	poetry run mkdocs serve || mksdocs serve
+	poetry run mkdocs serve || mkdocs serve
 
 .PHONY: local-release
 local-release: ## Generate release packages locally via goreleaser

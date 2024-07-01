@@ -92,6 +92,7 @@ func SetDefaultValues(c *viper.Viper) {
 	c.SetDefault(CollectorLivePageSize, DefaultK8sAPIPageSize)
 	c.SetDefault(CollectorLivePageBufferSize, DefaultK8sAPIPageBufferSize)
 	c.SetDefault(CollectorLiveRate, DefaultK8sAPIRateLimitPerSecond)
+	c.SetDefault(CollectorNonInteractive, DefaultK8sAPINonInteractive)
 
 	// Default values for storage provider
 	c.SetDefault("storage.wipe", true)
@@ -122,13 +123,14 @@ func SetDefaultValues(c *viper.Viper) {
 	c.SetDefault("builder.edge.batch_size_small", DefaultEdgeBatchSizeSmall)
 	c.SetDefault("builder.edge.batch_size_cluster_impact", DefaultEdgeBatchSizeClusterImpact)
 	c.SetDefault("builder.stop_on_error", DefaultStopOnError)
+	c.SetDefault("builder.edge.large_cluster_optimizations", DefaultLargeClusterOptimizations)
 
 	c.SetDefault(IngestorAPIEndpoint, DefaultIngestorAPIEndpoint)
 	c.SetDefault(IngestorAPIInsecure, DefaultIngestorAPIInsecure)
 	c.SetDefault(IngestorBlobBucketName, DefaultBucketName)
-	c.SetDefault("ingestor.temp_dir", DefaultTempDir)
-	c.SetDefault("ingestor.max_archive_size", DefaultMaxArchiveSize)
-	c.SetDefault("ingestor.archive_name", DefaultArchiveName)
+	c.SetDefault(IngestorTempDir, DefaultTempDir)
+	c.SetDefault(IngestorMaxArchiveSize, DefaultMaxArchiveSize)
+	c.SetDefault(IngestorArchiveName, DefaultArchiveName)
 }
 
 // SetEnvOverrides enables environment variable overrides for the config.
@@ -189,8 +191,12 @@ func NewConfig(v *viper.Viper, configPath string) (*KubehoundConfig, error) {
 
 // NewConfig creates a new config instance from the provided file using viper.
 func NewInlineConfig(v *viper.Viper) (*KubehoundConfig, error) {
+	// Load default embedded config file
+	SetDefaultValues(v)
+
 	// Configure environment variable override
 	SetEnvOverrides(v)
+
 	kc, err := unmarshalConfig(v)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshaling config data: %w", err)
