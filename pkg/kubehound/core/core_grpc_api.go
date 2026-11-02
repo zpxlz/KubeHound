@@ -10,46 +10,60 @@ import (
 	"github.com/DataDog/KubeHound/pkg/ingestor/notifier/noop"
 	"github.com/DataDog/KubeHound/pkg/ingestor/puller/blob"
 	"github.com/DataDog/KubeHound/pkg/kubehound/providers"
+	"github.com/DataDog/KubeHound/pkg/telemetry/events"
 	"github.com/DataDog/KubeHound/pkg/telemetry/log"
 	"github.com/DataDog/KubeHound/pkg/telemetry/span"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
-func CoreGrpcApi(ctx context.Context, khCfg *config.KubehoundConfig) error {
-	log.I.Infof("Starting KubeHound Distributed Ingestor Service")
-	span, ctx := tracer.StartSpanFromContext(ctx, span.IngestorLaunch, tracer.Measured())
+func initCoreGrpcApi(ctx context.Context, khCfg *config.KubehoundConfig) (*api.IngestorAPI, error) {
+	l := log.Logger(ctx)
+	l.Info("Starting KubeHound Distributed Ingestor Service")
+	span, ctx := span.SpanRunFromContext(ctx, span.IngestorLaunch)
 	var err error
 	defer func() {
 		span.Finish(tracer.WithError(err))
 	}()
 
 	// Initialize the providers (graph, cache, store)
-	log.I.Info("Initializing providers (graph, cache, store)")
+	l.Info("Initializing providers (graph, cache, store)")
 	p, err := providers.NewProvidersFactoryConfig(ctx, khCfg)
 	if err != nil {
-		return fmt.Errorf("factory config creation: %w", err)
+		return nil, fmt.Errorf("factory config creation: %w", err)
 	}
-	defer p.Close(ctx)
 
-	log.I.Info("Creating Blob Storage provider")
+	l.Info("Creating Blob Storage provider")
 	puller, err := blob.NewBlobStorage(khCfg, khCfg.Ingestor.Blob)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	log.I.Info("Creating Noop Notifier")
+	l.Info("Creating Noop Notifier")
 	noopNotifier := noop.NewNoopNotifier()
 
-	log.I.Info("Creating Ingestor API")
-	ingestorApi := api.NewIngestorAPI(khCfg, puller, noopNotifier, p)
+	l.Info("Creating Ingestor API")
 
-	log.I.Info("Starting Ingestor API")
+	return api.NewIngestorAPI(khCfg, puller, noopNotifier, p), nil
+}
+
+func CoreGrpcApi(ctx context.Context, khCfg *config.KubehoundConfig) error {
+	ingestorApi, err := initCoreGrpcApi(ctx, khCfg)
+	if err != nil {
+		_ = events.PushEvent(ctx, events.IngestorFailed, "")
+
+		return err
+	}
+	defer ingestorApi.Close(ctx)
+	_ = events.PushEvent(ctx, events.IngestorInit, "")
+
+	l := log.Logger(ctx)
+	l.Info("Starting Ingestor API")
 	err = grpc.Listen(ctx, ingestorApi)
 	if err != nil {
 		return err
 	}
 
-	log.I.Infof("KubeHound Ingestor API shutdown")
+	l.Info("KubeHound Ingestor API shutdown")
 
 	return nil
 }

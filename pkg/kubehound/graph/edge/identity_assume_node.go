@@ -36,19 +36,30 @@ func (e *IdentityAssumeNode) Name() string {
 	return "IdentityAssumeNode"
 }
 
+func (e *IdentityAssumeNode) AttckTechniqueID() AttckTechniqueID {
+	return AttckTechniqueValidAccounts
+}
+
+func (e *IdentityAssumeNode) AttckTacticID() AttckTacticID {
+	return AttckTacticPrivilegeEscalation
+}
+
 func (e *IdentityAssumeNode) Processor(ctx context.Context, oic *converter.ObjectIDConverter, entry any) (any, error) {
 	typed, ok := entry.(*nodeIdentityGroup)
 	if !ok {
 		return nil, fmt.Errorf("invalid type passed to processor: %T", entry)
 	}
 
-	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.Node, typed.Identity)
+	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.Node, typed.Identity, map[string]any{
+		"attckTechniqueID": string(e.AttckTechniqueID()),
+		"attckTacticID":    string(e.AttckTacticID()),
+	})
 }
 
 func (e *IdentityAssumeNode) Stream(ctx context.Context, store storedb.Provider, c cache.CacheReader,
 	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback) error {
 
-	nodes := adapter.MongoDB(store).Collection(collections.NodeName)
+	nodes := adapter.MongoDB(ctx, store).Collection(collections.NodeName)
 
 	// Nodes will either have a dedicated user based on node name or use the default system:nodes group
 	// See reference for details: https://kubernetes.io/docs/reference/access-authn-authz/node/
@@ -56,9 +67,9 @@ func (e *IdentityAssumeNode) Stream(ctx context.Context, store storedb.Provider,
 
 	// If the default node group has no permissions, we do not set a user id
 	filter := bson.M{
-		"user_id":         bson.M{"$ne": primitive.NilObjectID},
-		"runtime.runID":   e.runtime.RunID.String(),
-		"runtime.cluster": e.runtime.ClusterName,
+		"user_id":              bson.M{"$ne": primitive.NilObjectID},
+		"runtime.runID":        e.runtime.RunID.String(),
+		"runtime.cluster.name": e.runtime.Cluster.Name,
 	}
 
 	cur, err := nodes.Find(ctx, filter, options.Find().SetProjection(projection))

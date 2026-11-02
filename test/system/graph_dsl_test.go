@@ -2,8 +2,6 @@
 package system
 
 import (
-	"context"
-
 	"github.com/DataDog/KubeHound/pkg/config"
 	"github.com/DataDog/KubeHound/pkg/kubehound/storage/graphdb"
 	gremlingo "github.com/apache/tinkerpop/gremlin-go/v3/driver"
@@ -17,7 +15,8 @@ type DslTestSuite struct {
 }
 
 func (suite *DslTestSuite) SetupTest() {
-	gdb, err := graphdb.Factory(context.Background(), config.MustLoadConfig(KubeHoundConfigPath))
+	ctx := suite.T().Context()
+	gdb, err := graphdb.Factory(ctx, config.MustLoadConfig(ctx, KubeHoundConfigPath))
 	suite.Require().NoError(err)
 	suite.gdb = gdb
 	suite.client = gdb.Raw().(*gremlingo.DriverRemoteConnection)
@@ -115,6 +114,7 @@ func (suite *DslTestSuite) TestTraversalSource_escapes() {
 		"path[kube-proxy, CE_MODULE_LOAD, Node]",
 		"path[kube-proxy, CE_PRIV_MOUNT, Node]",
 		"path[varlog-container, CE_VAR_LOG_SYMLINK, Node]",
+		"path[umh-core-container, CE_UMH_CORE_PATTERN, Node]",
 	}
 
 	suite.ElementsMatch(escapes, expected)
@@ -218,6 +218,8 @@ func (suite *DslTestSuite) TestTraversalSource_groups() {
 		// Default "system:nodes" group being used in IDENTITY_ASSUME attack
 		"system:monitoring", "system:unauthenticated", "system:serviceaccounts",
 		"system:bootstrappers:kubeadm:default-node-token", "system:authenticated", "system:masters",
+		// KubeAdm groups
+		"kubeadm:cluster-admins",
 	}
 	for _, identity := range expectedIdentities {
 		if identity.Type == "Group" {
@@ -257,7 +259,6 @@ func (suite *DslTestSuite) TestTraversal_criticalPaths() {
 	// There are A LOT of paths in the test cluster. Just sample a few
 	expected := []string{
 		"path[Endpoint, ENDPOINT_EXPLOIT, Container, IDENTITY_ASSUME, Identity, PERMISSION_DISCOVER, PermissionSet]",
-		"path[Endpoint, ENDPOINT_EXPLOIT, Container, VOLUME_DISCOVER, Volume, TOKEN_STEAL, Identity, PERMISSION_DISCOVER, PermissionSet]",
 		"path[Endpoint, ENDPOINT_EXPLOIT, Container, CE_NSENTER, Node, IDENTITY_ASSUME, Identity, PERMISSION_DISCOVER, PermissionSet]",
 		"path[Endpoint, ENDPOINT_EXPLOIT, Container, CE_MODULE_LOAD, Node, IDENTITY_ASSUME, Identity, PERMISSION_DISCOVER, PermissionSet]",
 		"path[Endpoint, ENDPOINT_EXPLOIT, Container, CE_PRIV_MOUNT, Node, IDENTITY_ASSUME, Identity, PERMISSION_DISCOVER, PermissionSet]",
@@ -281,7 +282,7 @@ func (suite *DslTestSuite) TestTraversal_minHopsToCritical() {
 
 	serviceHops, err := res.GetInt()
 	suite.NoError(err)
-	suite.Equal(serviceHops, 4)
+	suite.Equal(4, serviceHops)
 
 	// Container should have 1 less hop
 	raw, err = suite.client.Submit("kh.containers().minHopsToCritical(6)")
@@ -293,7 +294,7 @@ func (suite *DslTestSuite) TestTraversal_minHopsToCritical() {
 
 	containerHops, err := res.GetInt()
 	suite.NoError(err)
-	suite.Equal(containerHops, serviceHops-1)
+	suite.Equal(serviceHops-1, containerHops)
 }
 
 func (suite *DslTestSuite) TestTraversal_criticalPathsFilter() {
@@ -329,5 +330,5 @@ func (suite *DslTestSuite) TestTraversal_critical() {
 }
 
 func (suite *DslTestSuite) TearDownTest() {
-	suite.gdb.Close(context.Background())
+	suite.gdb.Close(suite.T().Context())
 }

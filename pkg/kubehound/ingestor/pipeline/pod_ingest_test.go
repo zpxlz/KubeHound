@@ -24,7 +24,7 @@ func TestPodIngest_Pipeline(t *testing.T) {
 	t.Parallel()
 
 	pi := &PodIngest{}
-	ctx := context.Background()
+	ctx := t.Context()
 	fakePod, err := loadTestObject[types.PodType]("testdata/pod.json")
 	assert.NoError(t, err)
 
@@ -241,8 +241,10 @@ func TestPodIngest_Pipeline(t *testing.T) {
 				Edge: config.EdgeBuilderConfig{},
 			},
 			Dynamic: config.DynamicConfig{
-				RunID:       testID,
-				ClusterName: "test-cluster",
+				RunID: testID,
+				Cluster: config.DynamicClusterInfo{
+					Name: "test-cluster",
+				},
 			},
 		},
 	}

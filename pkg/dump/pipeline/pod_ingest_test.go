@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -13,7 +12,7 @@ import (
 
 func TestDumpIngestor_IngestPod(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// no ingestion
 	noIngest := func(t *testing.T, _ []types.PodType) *PodIngestor {
@@ -82,7 +81,6 @@ func TestDumpIngestor_IngestPod(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ingestor := tt.testfct(t, tt.args.pods)

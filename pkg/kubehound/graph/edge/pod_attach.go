@@ -36,26 +36,37 @@ func (e *PodAttach) Name() string {
 	return "PodAttach"
 }
 
+func (e *PodAttach) AttckTechniqueID() AttckTechniqueID {
+	return AttckTechniqueContainerAdministrationCommand
+}
+
+func (e *PodAttach) AttckTacticID() AttckTacticID {
+	return AttckTacticExecution
+}
+
 func (e *PodAttach) Processor(ctx context.Context, oic *converter.ObjectIDConverter, entry any) (any, error) {
 	typed, ok := entry.(*podAttachGroup)
 	if !ok {
 		return nil, fmt.Errorf("invalid type passed to processor: %T", entry)
 	}
 
-	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.Node, typed.Pod)
+	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.Node, typed.Pod, map[string]any{
+		"attckTechniqueID": string(e.AttckTechniqueID()),
+		"attckTacticID":    string(e.AttckTacticID()),
+	})
 }
 
 func (e *PodAttach) Stream(ctx context.Context, store storedb.Provider, _ cache.CacheReader,
 	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback) error {
 
-	pods := adapter.MongoDB(store).Collection(collections.PodName)
+	pods := adapter.MongoDB(ctx, store).Collection(collections.PodName)
 
 	// We just need a 1:1 mapping of the node and pod to create this edge
 	projection := bson.M{"_id": 1, "node_id": 1}
 
 	filter := bson.M{
-		"runtime.runID":   e.runtime.RunID.String(),
-		"runtime.cluster": e.runtime.ClusterName,
+		"runtime.runID":        e.runtime.RunID.String(),
+		"runtime.cluster.name": e.runtime.Cluster.Name,
 	}
 
 	cur, err := pods.Find(ctx, filter, options.Find().SetProjection(projection))

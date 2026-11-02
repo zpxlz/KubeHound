@@ -29,9 +29,23 @@ func newFakeDumpIngestorPipeline(ctx context.Context, t *testing.T, mockCollecto
 
 }
 
+func closingSequence(ctx context.Context, t *testing.T, mDumpWriter *mockwriter.DumperWriter, mCollectorClient *mockcollector.CollectorClient) (*mockwriter.DumperWriter, *mockcollector.CollectorClient) {
+	t.Helper()
+
+	closingSequence := dumpIngestorClosingSequence(mCollectorClient, mDumpWriter)
+	for _, step := range closingSequence {
+		switch step.entity { //nolint: gocritic
+		case "Metadata":
+			mCollectorClient.EXPECT().ComputeMetadata(mock.Anything, NewMetadataIngestor(ctx, mDumpWriter)).Return(nil).Once()
+		}
+	}
+
+	return mDumpWriter, mCollectorClient
+}
+
 func TestPipelineDumpIngestor_Run(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	singleThreadedPipeline := func(t *testing.T) (*mockwriter.DumperWriter, collector.CollectorClient) {
 		t.Helper()
@@ -64,6 +78,8 @@ func TestPipelineDumpIngestor_Run(t *testing.T) {
 				mCollectorClient.EXPECT().StreamEndpoints(mock.Anything, NewEndpointIngestor(ctx, mDumpWriter)).Return(nil).Once().NotBefore(mStreamClusteRoleBindings)
 			}
 		}
+
+		mDumpWriter, mCollectorClient = closingSequence(ctx, t, mDumpWriter, mCollectorClient)
 
 		return mDumpWriter, mCollectorClient
 	}
@@ -98,6 +114,8 @@ func TestPipelineDumpIngestor_Run(t *testing.T) {
 				mCollectorClient.EXPECT().StreamEndpoints(mock.Anything, NewEndpointIngestor(ctx, mDumpWriter)).Return(nil).Once()
 			}
 		}
+
+		mDumpWriter, mCollectorClient = closingSequence(ctx, t, mDumpWriter, mCollectorClient)
 
 		return mDumpWriter, mCollectorClient
 	}
@@ -141,7 +159,6 @@ func TestPipelineDumpIngestor_Run(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			mDumpWriter, mCollectorClient := tt.testfct(t)
@@ -151,7 +168,7 @@ func TestPipelineDumpIngestor_Run(t *testing.T) {
 				t.Errorf("PipelineDumpIngestor.Run() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if err := pipeline.Wait(ctx); (err != nil) != tt.wantErr {
+			if err := pipeline.WaitAndClose(ctx); (err != nil) != tt.wantErr {
 				t.Errorf("PipelineDumpIngestor.Wait() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

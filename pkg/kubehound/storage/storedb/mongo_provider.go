@@ -7,6 +7,7 @@ import (
 
 	"github.com/DataDog/KubeHound/pkg/config"
 	"github.com/DataDog/KubeHound/pkg/kubehound/store/collections"
+	"github.com/DataDog/KubeHound/pkg/telemetry/log"
 	"github.com/DataDog/KubeHound/pkg/telemetry/tag"
 	"github.com/hashicorp/go-multierror"
 	"go.mongodb.org/mongo-driver/bson"
@@ -51,7 +52,8 @@ func createClient(ctx context.Context, opts *options.ClientOptions, timeout time
 // createReaderWriter creates a pair of MongoDB clients - one for writes and another for reads.
 func createReaderWriter(ctx context.Context, url string, timeout time.Duration) (*mongo.Client, *mongo.Client, error) {
 	baseOpts := options.Client()
-	baseOpts.ApplyURI(url + fmt.Sprintf("/?connectTimeoutMS=%d", timeout))
+	baseOpts.ApplyURI(url)
+	baseOpts.SetConnectTimeout(timeout)
 
 	writer, err := createClient(ctx, baseOpts, timeout)
 	if err != nil {
@@ -105,6 +107,28 @@ func (mp *MongoProvider) Prepare(ctx context.Context) error {
 
 	if err := ib.BuildAll(ctx); err != nil {
 		return fmt.Errorf("mongo DB index builder run: %w", err)
+	}
+
+	return nil
+}
+
+func (mp *MongoProvider) Clean(ctx context.Context, runId string, clusterName string) error {
+	l := log.Logger(ctx)
+	db := mp.writer.Database(MongoDatabaseName)
+	collections, err := db.ListCollectionNames(ctx, bson.M{})
+	if err != nil {
+		return fmt.Errorf("listing mongo DB collections: %w", err)
+	}
+	filter := bson.M{
+		"runtime.runID":        runId,
+		"runtime.cluster.name": clusterName,
+	}
+	for _, collectionName := range collections {
+		res, err := db.Collection(collectionName).DeleteMany(ctx, filter)
+		if err != nil {
+			return fmt.Errorf("deleting mongo DB collection %s: %w", collectionName, err)
+		}
+		l.Info("Deleted elements from collection", log.Int64("count", res.DeletedCount), log.String("collection", collectionName))
 	}
 
 	return nil

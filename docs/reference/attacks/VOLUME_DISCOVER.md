@@ -11,15 +11,15 @@ mitreAttackTactic: TA0007 - Discovery
 
 # VOLUME_DISCOVER
 
-| Source                                    | Destination                           | MITRE                            |
-| ----------------------------------------- | ------------------------------------- |----------------------------------|
+| Source                                | Destination                     | MITRE ATT&CK                                                                          |
+| ------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------- |
 | [Container](../entities/container.md) | [Volume](../entities/volume.md) | [Container and Resource Discovery, T1613](https://attack.mitre.org/techniques/T1613/) |
 
 Represents an attacker within a container discovering a mounted volume.
 
 ## Details
 
-Volumes can contains K8s API tokens or other resources useful to an attacker in building an attack path.
+Volumes can contain K8s API tokens or other resources useful to an attacker in building an attack path.
 
 ## Prerequisites
 
@@ -102,4 +102,3 @@ None
 ## References:
 
 + [Official Kubernetes documentation: Volumes ](https://kubernetes.io/docs/concepts/storage/volumes/)
-

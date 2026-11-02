@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"sync"
 
@@ -18,9 +17,8 @@ import (
 )
 
 const (
-	TarWriterExtension = ".tar.gz"
-	TarWriterChmod     = 0600
-	TarTypeTag         = "tar"
+	TarWriterChmod = 0600
+	TarTypeTag     = "tar"
 
 	// Multi-threading the dump with one worker for each types
 	// The number of workers is set to the number of differents entities (roles, pods, ...)
@@ -40,9 +38,8 @@ type TarWriter struct {
 	fsWriter   *FSWriter
 }
 
-func NewTarWriter(ctx context.Context, directoryPath string, resName string) (*TarWriter, error) {
-	tarPath := path.Join(directoryPath, fmt.Sprintf("%s%s", resName, TarWriterExtension))
-	tarFile, err := createTarFile(tarPath)
+func NewTarWriter(ctx context.Context, tarPath string) (*TarWriter, error) {
+	tarFile, err := createTarFile(ctx, tarPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tar file: %w", err)
 	}
@@ -63,8 +60,9 @@ func NewTarWriter(ctx context.Context, directoryPath string, resName string) (*T
 	}, nil
 }
 
-func createTarFile(tarPath string) (*os.File, error) {
-	log.I.Debugf("Creating tar file %s", tarPath)
+func createTarFile(ctx context.Context, tarPath string) (*os.File, error) {
+	l := log.Logger(ctx)
+	l.Debugf("Creating tar file", log.String(log.FieldPathKey, tarPath))
 	err := os.MkdirAll(filepath.Dir(tarPath), WriterDirMod)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create directories: %w", err)
@@ -84,7 +82,8 @@ func (f *TarWriter) WorkerNumber() int {
 // Write function writes the Kubernetes object to a buffer
 // All buffer are stored in a map which is flushed at the end of every type processed
 func (t *TarWriter) Write(ctx context.Context, k8sObj []byte, filePath string) error {
-	log.I.Debugf("Writing to file %s", filePath)
+	l := log.Logger(ctx)
+	l.Debug("Writing to file", log.String(log.FieldPathKey, filePath))
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -99,8 +98,9 @@ func (t *TarWriter) Write(ctx context.Context, k8sObj []byte, filePath string) e
 
 // Flush function flushes all kubernetes object from the buffers to the tar file
 func (t *TarWriter) Flush(ctx context.Context) error {
-	log.I.Debug("Flushing writers")
-	span, _ := tracer.StartSpanFromContext(ctx, span.DumperWriterFlush, tracer.Measured())
+	l := log.Logger(ctx)
+	l.Debug("Flushing writers")
+	span, _ := span.SpanRunFromContext(ctx, span.DumperWriterFlush)
 	span.SetTag(tag.DumperWriterTypeTag, TarTypeTag)
 	var err error
 	defer func() { span.Finish(tracer.WithError(err)) }()
@@ -126,8 +126,9 @@ func (t *TarWriter) Flush(ctx context.Context) error {
 // Close all the handler used to write the tar file
 // Need to be closed only when all assets are dumped
 func (t *TarWriter) Close(ctx context.Context) error {
-	log.I.Debug("Closing handlers for tar")
-	span, _ := tracer.StartSpanFromContext(ctx, span.DumperWriterClose, tracer.Measured())
+	l := log.Logger(ctx)
+	l.Debug("Closing handlers for tar")
+	span, _ := span.SpanRunFromContext(ctx, span.DumperWriterClose)
 	span.SetTag(tag.DumperWriterTypeTag, TarTypeTag)
 	var err error
 	defer func() { span.Finish(tracer.WithError(err)) }()

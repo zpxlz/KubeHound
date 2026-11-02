@@ -30,7 +30,7 @@ func fakeCacheBuilder(ctx context.Context, cacheSize int) (*MemCacheProvider, ma
 func TestMemCacheProvider_Get(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	fakeProvider, fakeCache := fakeCacheBuilder(ctx, 3)
 
 	type fields struct {
@@ -61,7 +61,6 @@ func TestMemCacheProvider_Get(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			m := &MemCacheProvider{
@@ -87,7 +86,7 @@ func TestMemCacheProvider_Get(t *testing.T) {
 func TestMemCacheAsyncWriter_Queue(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Standard write
 	fakeProvider1, _ := NewMemCacheProvider(ctx)
@@ -152,7 +151,6 @@ func TestMemCacheAsyncWriter_Queue(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			m := &MemCacheAsyncWriter{

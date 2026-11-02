@@ -67,13 +67,13 @@ func (maw *MongoAsyncWriter) startBackgroundWriter(ctx context.Context) {
 					return
 				}
 
-				_ = statsd.Count(metric.BackgroundWriterCall, 1, maw.tags, 1)
+				_ = statsd.Count(ctx, metric.BackgroundWriterCall, 1, maw.tags, 1)
 				err := maw.batchWrite(ctx, data)
 				if err != nil {
 					log.Trace(ctx).Errorf("write data in background batch writer: %v", err)
 				}
 
-				_ = statsd.Decr(metric.QueueSize, maw.tags, 1)
+				_ = statsd.Decr(ctx, metric.QueueSize, maw.tags, 1)
 			case <-ctx.Done():
 				log.Trace(ctx).Debug("Closed background mongodb worker")
 
@@ -85,13 +85,13 @@ func (maw *MongoAsyncWriter) startBackgroundWriter(ctx context.Context) {
 
 // batchWrite blocks until the write is complete
 func (maw *MongoAsyncWriter) batchWrite(ctx context.Context, ops []mongo.WriteModel) error {
-	span, ctx := tracer.StartSpanFromContext(ctx, span.MongoDBBatchWrite, tracer.Measured())
+	span, ctx := span.SpanRunFromContext(ctx, span.MongoDBBatchWrite)
 	span.SetTag(tag.CollectionTag, maw.collection.Name())
 	var err error
 	defer func() { span.Finish(tracer.WithError(err)) }()
 	defer maw.writingInFlight.Done()
 
-	_ = statsd.Count(metric.ObjectWrite, int64(len(ops)), maw.tags, 1)
+	_ = statsd.Count(ctx, metric.ObjectWrite, int64(len(ops)), maw.tags, 1)
 
 	bulkWriteOpts := options.BulkWrite().SetOrdered(false)
 	_, err = maw.dbWriter.BulkWrite(ctx, ops, bulkWriteOpts)
@@ -114,7 +114,7 @@ func (maw *MongoAsyncWriter) Queue(ctx context.Context, model any) error {
 
 		maw.writingInFlight.Add(1)
 		maw.consumerChan <- copied
-		_ = statsd.Incr(metric.QueueSize, maw.tags, 1)
+		_ = statsd.Incr(ctx, metric.QueueSize, maw.tags, 1)
 
 		// cleanup the ops array after we have copied it to the channel
 		maw.ops = nil
@@ -126,7 +126,7 @@ func (maw *MongoAsyncWriter) Queue(ctx context.Context, model any) error {
 // Flush triggers writes of any remaining items in the queue.
 // This is blocking
 func (maw *MongoAsyncWriter) Flush(ctx context.Context) error {
-	span, ctx := tracer.StartSpanFromContext(ctx, span.MongoDBFlush, tracer.Measured())
+	span, ctx := span.SpanRunFromContext(ctx, span.MongoDBFlush)
 	span.SetTag(tag.CollectionTag, maw.collection.Name())
 	var err error
 	defer func() { span.Finish(tracer.WithError(err)) }()

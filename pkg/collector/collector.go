@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/DataDog/KubeHound/pkg/config"
 	"github.com/DataDog/KubeHound/pkg/globals/types"
@@ -77,15 +78,20 @@ type EndpointIngestor interface {
 	Complete(context.Context) error
 }
 
+// MetadataIngestor defines the interface to allow an ingestor to computed metrics and metadata from a collector.
+type MetadataIngestor interface {
+	DumpMetadata(context.Context, Metadata) error
+}
+
 //go:generate mockery --name CollectorClient --output mockcollector --case underscore --filename collector_client.go --with-expecter
 type CollectorClient interface { //nolint: interfacebloat
 	services.Dependency
 
 	// ClusterInfo returns the target cluster information for the current run.
-	ClusterInfo(ctx context.Context) (*config.ClusterInfo, error)
+	ClusterInfo(ctx context.Context) (*ClusterInfo, error)
 
-	// Tags return the tags for the current run.
-	Tags(ctx context.Context) []string
+	// Compute the metrics and gather all the metadata and dump it through the ingestor.DumpMetadata
+	ComputeMetadata(ctx context.Context, ingestor MetadataIngestor) error
 
 	// StreamNodes will iterate through all NodeType objects collected by the collector and invoke the ingestor.IngestNode method on each.
 	// Once all the NodeType objects have been exhausted the ingestor.Complete method will be invoked to signal the end of the stream.
@@ -121,10 +127,10 @@ type CollectorClient interface { //nolint: interfacebloat
 
 // ClientFactory creates an initialized instance of a collector client based on the provided application configuration.
 func ClientFactory(ctx context.Context, cfg *config.KubehoundConfig) (CollectorClient, error) {
-	switch {
-	case cfg.Collector.Type == config.CollectorTypeK8sAPI:
+	switch cfg.Collector.Type {
+	case config.CollectorTypeK8sAPI:
 		return NewK8sAPICollector(ctx, cfg)
-	case cfg.Collector.Type == config.CollectorTypeFile:
+	case config.CollectorTypeFile:
 		return NewFileCollector(ctx, cfg)
 	default:
 		return nil, fmt.Errorf("collector type not supported: %s", cfg.Collector.Type)
@@ -142,8 +148,8 @@ type collectorTags struct {
 	baseTags           []string
 }
 
-func newCollectorTags() *collectorTags {
-	return &collectorTags{
+func newCollectorTags() collectorTags {
+	return collectorTags{
 		pod:                tag.GetBaseTagsWith(tag.Collector(FileCollectorName), tag.Entity(tag.EntityPods)),
 		role:               tag.GetBaseTagsWith(tag.Collector(FileCollectorName), tag.Entity(tag.EntityRoles)),
 		rolebinding:        tag.GetBaseTagsWith(tag.Collector(FileCollectorName), tag.Entity(tag.EntityRolebindings)),
@@ -153,4 +159,23 @@ func newCollectorTags() *collectorTags {
 		clusterrolebinding: tag.GetBaseTagsWith(tag.Collector(FileCollectorName), tag.Entity(tag.EntityClusterRolebindings)),
 		baseTags:           tag.GetBaseTags(),
 	}
+}
+
+type Metrics struct {
+	DumpTime             time.Time     `json:"dump_time"`
+	RunDuration          time.Duration `json:"run_duration"`
+	TotalWaitTime        time.Duration `json:"total_wait_time"`
+	ThrottlingPercentage float64       `json:"throttling_percentage"`
+}
+
+type ClusterInfo struct {
+	Name         string `json:"name"`
+	VersionMajor string `json:"version_major"`
+	VersionMinor string `json:"version_minor"`
+}
+
+type Metadata struct {
+	RunID   string       `json:"run_id"`
+	Cluster *ClusterInfo `json:"cluster"`
+	Metrics Metrics      `json:"metrics"`
 }

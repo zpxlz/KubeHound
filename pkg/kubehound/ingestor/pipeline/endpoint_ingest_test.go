@@ -24,7 +24,7 @@ func TestEndpointSlice_Pipeline(t *testing.T) {
 
 	ei := &EndpointIngest{}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	fakeEp, err := loadTestObject[types.EndpointType]("testdata/endpointslice.json")
 	assert.NoError(t, err)
 
@@ -124,8 +124,10 @@ func TestEndpointSlice_Pipeline(t *testing.T) {
 				Edge: config.EdgeBuilderConfig{},
 			},
 			Dynamic: config.DynamicConfig{
-				RunID:       testID,
-				ClusterName: "test-cluster",
+				RunID: testID,
+				Cluster: config.DynamicClusterInfo{
+					Name: "test-cluster",
+				},
 			},
 		},
 	}

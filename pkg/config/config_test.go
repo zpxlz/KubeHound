@@ -32,8 +32,10 @@ func TestMustLoadConfig(t *testing.T) {
 				Collector: CollectorConfig{
 					Type: CollectorTypeFile,
 					File: &FileCollectorConfig{
-						Directory:   "cluster-data/",
-						ClusterName: "test-cluster",
+						Directory: "cluster-data/",
+						Archive: &FileArchiveConfig{
+							NoCompress: DefaultArchiveNoCompress,
+						},
 					},
 					// This is always set as the default value
 					Live: &K8SAPICollectorConfig{
@@ -49,6 +51,9 @@ func TestMustLoadConfig(t *testing.T) {
 				JanusGraph: JanusGraphConfig{
 					URL:               "ws://localhost:8182/gremlin",
 					ConnectionTimeout: DefaultConnectionTimeout,
+					WriterTimeout:     defaultJanusGraphWriterTimeout,
+					WriterMaxRetry:    defaultJanusGraphWriterMaxRetry,
+					WriterWorkerCount: defaultJanusGraphWriterWorkerCount,
 				},
 				Telemetry: TelemetryConfig{
 					Statsd: StatsdConfig{
@@ -61,30 +66,35 @@ func TestMustLoadConfig(t *testing.T) {
 				},
 				Builder: BuilderConfig{
 					Vertex: VertexBuilderConfig{
-						BatchSize:      500,
-						BatchSizeSmall: 100,
+						BatchSize:      250,
+						BatchSizeSmall: 50,
 					},
 					Edge: EdgeBuilderConfig{
-						LargeClusterOptimizations: false,
+						LargeClusterOptimizations: DefaultLargeClusterOptimizations,
 						WorkerPoolSize:            5,
 						WorkerPoolCapacity:        100,
-						BatchSize:                 500,
-						BatchSizeSmall:            100,
+						BatchSize:                 250,
+						BatchSizeSmall:            50,
 						BatchSizeClusterImpact:    10,
 					},
 				},
 				Ingestor: IngestorConfig{
 					API: IngestorAPIConfig{
-						Endpoint: "127.0.0.1:9000",
+						Endpoint: "",
 						Insecure: false,
 					},
 					Blob: &BlobConfig{
-						Bucket: "",
-						Region: "",
+						BucketUrl: "",
+						Region:    "",
 					},
 					TempDir:        "/tmp/kubehound",
 					ArchiveName:    "archive.tar.gz",
-					MaxArchiveSize: 1073741824,
+					MaxArchiveSize: DefaultMaxArchiveSize,
+				},
+				Dynamic: DynamicConfig{
+					Cluster: DynamicClusterInfo{
+						Name: "test-cluster",
+					},
 				},
 			},
 			wantErr: false,
@@ -102,6 +112,11 @@ func TestMustLoadConfig(t *testing.T) {
 				},
 				Collector: CollectorConfig{
 					Type: CollectorTypeK8sAPI,
+					File: &FileCollectorConfig{
+						Archive: &FileArchiveConfig{
+							NoCompress: DefaultArchiveNoCompress,
+						},
+					},
 					Live: &K8SAPICollectorConfig{
 						PageSize:           500,
 						PageBufferSize:     10,
@@ -115,6 +130,9 @@ func TestMustLoadConfig(t *testing.T) {
 				JanusGraph: JanusGraphConfig{
 					URL:               "ws://localhost:8182/gremlin",
 					ConnectionTimeout: DefaultConnectionTimeout,
+					WriterTimeout:     defaultJanusGraphWriterTimeout,
+					WriterMaxRetry:    defaultJanusGraphWriterMaxRetry,
+					WriterWorkerCount: defaultJanusGraphWriterWorkerCount,
 				},
 				Telemetry: TelemetryConfig{
 					Statsd: StatsdConfig{
@@ -128,7 +146,7 @@ func TestMustLoadConfig(t *testing.T) {
 				Builder: BuilderConfig{
 					Vertex: VertexBuilderConfig{
 						BatchSize:      1000,
-						BatchSizeSmall: 100,
+						BatchSizeSmall: 50,
 					},
 					Edge: EdgeBuilderConfig{
 						LargeClusterOptimizations: true,
@@ -141,16 +159,16 @@ func TestMustLoadConfig(t *testing.T) {
 				},
 				Ingestor: IngestorConfig{
 					API: IngestorAPIConfig{
-						Endpoint: "127.0.0.1:9000",
+						Endpoint: "",
 						Insecure: false,
 					},
 					Blob: &BlobConfig{
-						Bucket: "",
-						Region: "",
+						BucketUrl: "",
+						Region:    "",
 					},
 					TempDir:        "/tmp/kubehound",
 					ArchiveName:    "archive.tar.gz",
-					MaxArchiveSize: 1073741824,
+					MaxArchiveSize: DefaultMaxArchiveSize,
 				},
 			},
 			wantErr: false,
@@ -166,11 +184,10 @@ func TestMustLoadConfig(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			v := viper.New()
-			cfg, err := NewConfig(v, tt.args.configPath)
+			cfg, err := NewConfig(t.Context(), v, tt.args.configPath)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, cfg)

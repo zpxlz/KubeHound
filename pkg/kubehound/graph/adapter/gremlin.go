@@ -48,7 +48,7 @@ func structToMap(in any) (map[string]any, error) {
 
 // GremlinEdgeProcessor transforms the inputs into a map suitable for bulk edge insert using the MergeE API.
 func GremlinEdgeProcessor(ctx context.Context, oic *converter.ObjectIDConverter, label string,
-	out primitive.ObjectID, in primitive.ObjectID) (map[any]any, error) {
+	out primitive.ObjectID, in primitive.ObjectID, attributes map[string]any) (map[any]any, error) {
 
 	vidIn, err := oic.GraphID(ctx, in.Hex())
 	if err != nil {
@@ -66,6 +66,18 @@ func GremlinEdgeProcessor(ctx context.Context, oic *converter.ObjectIDConverter,
 		gremlin.Direction.Out: vidOut,
 	}
 
+	// Add any additional attributes to the edge.
+	for k, v := range attributes {
+		switch k {
+		case string(gremlin.T.Label), string(gremlin.T.Id), string(gremlin.Direction.In), string(gremlin.Direction.Out):
+			// Skip reserved keys.
+			continue
+		}
+
+		// Add the attribute to the edge.
+		processed[k] = v
+	}
+
 	return processed, nil
 }
 
@@ -73,7 +85,6 @@ func GremlinEdgeProcessor(ctx context.Context, oic *converter.ObjectIDConverter,
 func DefaultEdgeTraversal() types.EdgeTraversal {
 	return func(source *gremlin.GraphTraversalSource, inserts []any) *gremlin.GraphTraversal {
 		g := source.GetGraphTraversal().
-			//nolint:asasalint // required due to constraints in the gremlin API
 			Inject(inserts).
 			Unfold().As("em").
 			MergeE(__.Select("em")).

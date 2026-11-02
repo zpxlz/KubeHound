@@ -38,6 +38,14 @@ func (e *SharePSNamespace) Name() string {
 	return "SharePSNamespace"
 }
 
+func (e *SharePSNamespace) AttckTechniqueID() AttckTechniqueID {
+	return AttckTechniqueTaintedSharedContent
+}
+
+func (e *SharePSNamespace) AttckTacticID() AttckTacticID {
+	return AttckTacticLateralMovement
+}
+
 // Processor delegates the processing tasks to the generic containerEscapeProcessor.
 func (e *SharePSNamespace) Processor(ctx context.Context, oic *converter.ObjectIDConverter, entry any) (any, error) {
 	typed, ok := entry.(*sharedPsNamespaceGroupPair)
@@ -45,19 +53,22 @@ func (e *SharePSNamespace) Processor(ctx context.Context, oic *converter.ObjectI
 		return nil, fmt.Errorf("invalid type passed to processor: %T", entry)
 	}
 
-	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.ContainerA, typed.ContainerB)
+	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.ContainerA, typed.ContainerB, map[string]any{
+		"attckTechniqueID": string(e.AttckTechniqueID()),
+		"attckTacticID":    string(e.AttckTacticID()),
+	})
 }
 
 func (e *SharePSNamespace) Stream(ctx context.Context, store storedb.Provider, _ cache.CacheReader,
 	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback) error {
 
-	coll := adapter.MongoDB(store).Collection(collections.PodName)
+	coll := adapter.MongoDB(ctx, store).Collection(collections.PodName)
 	pipeline := []bson.M{
 		{
 			"$match": bson.M{
 				"k8.spec.shareprocessnamespace": true,
 				"runtime.runID":                 e.runtime.RunID.String(),
-				"runtime.cluster":               e.runtime.ClusterName,
+				"runtime.cluster.name":          e.runtime.Cluster.Name,
 			},
 		},
 		{

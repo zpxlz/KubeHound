@@ -28,6 +28,7 @@ var (
 	QueueSize            = "kubehound.storage.queue.size"
 	BackgroundWriterCall = "kubehound.storage.writer.background"
 	FlushWriterCall      = "kubehound.storage.writer.flush"
+	RetryWriterCall      = "kubehound.storage.writer.retry"
 )
 
 // Cache metrics
@@ -36,4 +37,11 @@ var (
 	CacheHit       = "kubehound.cache.hit"
 	CacheWrite     = "kubehound.cache.write"
 	CacheDuplicate = "kubehound.cache.duplicate"
+)
+
+// Ingestion metrics
+const (
+	IngestionRunDuration    = "kubehound.ingestion.run.duration"
+	IngestionBuildDuration  = "kubehound.ingestion.build.duration"
+	IngestionIngestDuration = "kubehound.ingestion.ingest.duration"
 )

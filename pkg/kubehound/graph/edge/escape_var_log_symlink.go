@@ -42,10 +42,18 @@ func (e *EscapeVarLogSymlink) Name() string {
 	return "ContainerEscapeVarLogSymlink"
 }
 
+func (e *EscapeVarLogSymlink) AttckTechniqueID() AttckTechniqueID {
+	return AttckTechniqueUnsecuredCredentials
+}
+
+func (e *EscapeVarLogSymlink) AttckTacticID() AttckTacticID {
+	return AttckTacticCredentialAccess
+}
+
 func (e *EscapeVarLogSymlink) Processor(ctx context.Context, oic *converter.ObjectIDConverter, entry any) (any, error) {
 	typed, ok := entry.(*permissionSetIDEscapeGroup)
 	if !ok {
-		return nil, fmt.Errorf("Invalid type passed to processor: %T", entry)
+		return nil, fmt.Errorf("invalid type passed to processor: %T", entry)
 	}
 
 	permissionSetVertexID, err := oic.GraphID(ctx, typed.PermissionSetID.Hex())
@@ -60,13 +68,13 @@ func (e *EscapeVarLogSymlink) Traversal() types.EdgeTraversal {
 	return func(source *gremlin.GraphTraversalSource, inserts []any) *gremlin.GraphTraversal {
 		g := source.GetGraphTraversal()
 		// reduce the graph to only these permission sets
-		g.V(inserts...).HasLabel("PermissionSet").
+		g.V(inserts...).Has("class", "PermissionSet").
 			// get identity vertices
 			InE("PERMISSION_DISCOVER").OutV().
 			// get container vertices
 			InE("IDENTITY_ASSUME").OutV().
 			// save container vertices as "c" so we can link to it to the node via CE_VAR_LOG_SYMLINK
-			HasLabel("Container").As("c").
+			Has("class", "Container").As("c").
 			// Get all the volumes
 			OutE("VOLUME_DISCOVER").InV().
 			Has("type", shared.VolumeTypeHost).
@@ -74,8 +82,10 @@ func (e *EscapeVarLogSymlink) Traversal() types.EdgeTraversal {
 			Has("sourcePath", P.Within("/", "/var", "/var/log")).
 			// get the node related to that volume mount
 			InE("VOLUME_ACCESS").OutV().
-			HasLabel("Node").As("n").
+			Has("class", "Node").As("n").
 			AddE("CE_VAR_LOG_SYMLINK").From("c").To("n").
+			Property("attckTechniqueID", string(e.AttckTechniqueID())).
+			Property("attckTacticID", string(e.AttckTacticID())).
 			Barrier().Limit(0)
 
 		return g
@@ -83,9 +93,9 @@ func (e *EscapeVarLogSymlink) Traversal() types.EdgeTraversal {
 }
 
 func (e *EscapeVarLogSymlink) Stream(ctx context.Context, store storedb.Provider, _ cache.CacheReader,
-	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback) error {
-
-	permissionSets := adapter.MongoDB(store).Collection(collections.PermissionSetName)
+	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback,
+) error {
+	permissionSets := adapter.MongoDB(ctx, store).Collection(collections.PermissionSetName)
 	pipeline := []bson.M{
 		{
 			"$match": bson.M{
@@ -109,8 +119,8 @@ func (e *EscapeVarLogSymlink) Stream(ctx context.Context, store storedb.Provider
 						},
 					},
 				},
-				"runtime.runID":   e.runtime.RunID.String(),
-				"runtime.cluster": e.runtime.ClusterName,
+				"runtime.runID":        e.runtime.RunID.String(),
+				"runtime.cluster.name": e.runtime.Cluster.Name,
 			},
 		},
 		{

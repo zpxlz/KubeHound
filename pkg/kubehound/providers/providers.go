@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/DataDog/KubeHound/pkg/collector"
 	"github.com/DataDog/KubeHound/pkg/config"
@@ -11,7 +12,11 @@ import (
 	"github.com/DataDog/KubeHound/pkg/kubehound/storage/cache"
 	"github.com/DataDog/KubeHound/pkg/kubehound/storage/graphdb"
 	"github.com/DataDog/KubeHound/pkg/kubehound/storage/storedb"
+	"github.com/DataDog/KubeHound/pkg/telemetry/events"
 	"github.com/DataDog/KubeHound/pkg/telemetry/log"
+	"github.com/DataDog/KubeHound/pkg/telemetry/metric"
+	"github.com/DataDog/KubeHound/pkg/telemetry/statsd"
+	"github.com/DataDog/KubeHound/pkg/telemetry/tag"
 )
 
 type ProvidersFactoryConfig struct {
@@ -22,13 +27,14 @@ type ProvidersFactoryConfig struct {
 
 // Initiating all the providers need for KubeHound (cache, store, graph)
 func NewProvidersFactoryConfig(ctx context.Context, khCfg *config.KubehoundConfig) (*ProvidersFactoryConfig, error) {
+	l := log.Logger(ctx)
 	// Create the cache client
-	log.I.Info("Loading cache provider")
+	l.Info("Loading cache provider")
 	cp, err := cache.Factory(ctx, khCfg)
 	if err != nil {
 		return nil, fmt.Errorf("cache client creation: %w", err)
 	}
-	log.I.Infof("Loaded %s cache provider", cp.Name())
+	l.Info("Loaded cache provider", log.String("provider", cp.Name()))
 
 	err = cp.Prepare(ctx)
 	if err != nil {
@@ -36,12 +42,13 @@ func NewProvidersFactoryConfig(ctx context.Context, khCfg *config.KubehoundConfi
 	}
 
 	// Create the store client
-	log.I.Info("Loading store database provider")
+	l.Info("Loading store database provider")
 	sp, err := storedb.Factory(ctx, khCfg)
 	if err != nil {
 		return nil, fmt.Errorf("store database client creation: %w", err)
 	}
-	log.I.Infof("Loaded %s store provider", sp.Name())
+	msg := fmt.Sprintf("Loaded %s store provider", sp.Name())
+	l.Info(msg, log.String("provider", sp.Name()))
 
 	err = sp.Prepare(ctx)
 	if err != nil {
@@ -49,12 +56,13 @@ func NewProvidersFactoryConfig(ctx context.Context, khCfg *config.KubehoundConfi
 	}
 
 	// Create the graph client
-	log.I.Info("Loading graph database provider")
+	l.Info("Loading graph database provider")
 	gp, err := graphdb.Factory(ctx, khCfg)
 	if err != nil {
 		return nil, fmt.Errorf("graph database client creation: %w", err)
 	}
-	log.I.Infof("Loaded %s graph provider", gp.Name())
+	msg = fmt.Sprintf("Loaded %s graph provider", gp.Name())
+	l.Info(msg, log.String("provider", sp.Name()))
 
 	err = gp.Prepare(ctx)
 	if err != nil {
@@ -75,26 +83,40 @@ func (p *ProvidersFactoryConfig) Close(ctx context.Context) {
 }
 
 func (p *ProvidersFactoryConfig) IngestBuildData(ctx context.Context, khCfg *config.KubehoundConfig) error {
+	l := log.Logger(ctx)
 	// Create the collector instance
-	log.I.Info("Loading Kubernetes data collector client")
+	l.Info("Loading Kubernetes data collector client")
+	start := time.Now()
 	collect, err := collector.ClientFactory(ctx, khCfg)
 	if err != nil {
 		return fmt.Errorf("collector client creation: %w", err)
 	}
 	defer func() { collect.Close(ctx) }()
-	log.I.Infof("Loaded %s collector client", collect.Name())
+	l.Infof("Loaded %s collector client", collect.Name())
 
 	// Run the ingest pipeline
-	log.I.Info("Starting Kubernetes raw data ingest")
+	l.Info("Starting Kubernetes raw data ingest")
 	err = ingestor.IngestData(ctx, khCfg, collect, p.CacheProvider, p.StoreProvider, p.GraphProvider)
 	if err != nil {
 		return fmt.Errorf("raw data ingest: %w", err)
 	}
+	// Metric for IngestData
+	_ = statsd.Gauge(ctx, metric.IngestionIngestDuration, float64(time.Since(start)), tag.GetDefaultTags(ctx), 1)
 
+	startBuild := time.Now()
 	err = graph.BuildGraph(ctx, khCfg, p.StoreProvider, p.GraphProvider, p.CacheProvider)
 	if err != nil {
 		return err
 	}
+
+	// Metric for BuildGraph
+	_ = statsd.Gauge(ctx, metric.IngestionBuildDuration, float64(time.Since(startBuild)), tag.GetDefaultTags(ctx), 1)
+
+	// Metric for IngestBuildData
+	_ = statsd.Gauge(ctx, metric.IngestionRunDuration, float64(time.Since(start)), tag.GetDefaultTags(ctx), 1)
+
+	text := fmt.Sprintf("KubeHound ingestion has been completed in %s", time.Since(start))
+	_ = events.PushEvent(ctx, events.IngestFinished, text)
 
 	return nil
 }

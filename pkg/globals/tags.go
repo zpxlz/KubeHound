@@ -1,7 +1,9 @@
 package globals
 
 const (
-	TagComponent = "component"
-	TagTeam      = "team"
-	TagService   = "service"
+	TagComponent              = "component"
+	CollectedClusterComponent = "collected_cluster"
+	RunID                     = "run_id"
+	TagTeam                   = "team"
+	TagService                = "service"
 )

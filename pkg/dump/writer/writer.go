@@ -2,6 +2,7 @@ package writer
 
 import (
 	"context"
+	"path"
 
 	"github.com/DataDog/KubeHound/pkg/telemetry/log"
 )
@@ -28,12 +29,15 @@ type DumperWriter interface {
 }
 
 func DumperWriterFactory(ctx context.Context, compression bool, directoryPath string, resultName string) (DumperWriter, error) {
+	l := log.Logger(ctx)
 	// if compression is enabled, create the tar.gz file
 	if compression {
-		log.I.Infof("Compression enabled")
+		l.Info("Compression enabled")
+		tarPath := path.Join(directoryPath, resultName)
 
-		return NewTarWriter(ctx, directoryPath, resultName)
+		return NewTarWriter(ctx, tarPath)
 	}
 
-	return NewFileWriter(ctx, directoryPath, resultName)
+	// Output the result directly in the directory provided by the user
+	return NewFileWriter(ctx, directoryPath)
 }

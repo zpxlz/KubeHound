@@ -36,24 +36,35 @@ func (e *IdentityAssumeContainer) Name() string {
 	return "IdentityAssumeContainer"
 }
 
+func (e *IdentityAssumeContainer) AttckTechniqueID() AttckTechniqueID {
+	return AttckTechniqueValidAccounts
+}
+
+func (e *IdentityAssumeContainer) AttckTacticID() AttckTacticID {
+	return AttckTacticPrivilegeEscalation
+}
+
 func (e *IdentityAssumeContainer) Processor(ctx context.Context, oic *converter.ObjectIDConverter, entry any) (any, error) {
 	typed, ok := entry.(*containerIdentityGroup)
 	if !ok {
 		return nil, fmt.Errorf("invalid type passed to processor: %T", entry)
 	}
 
-	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.Container, typed.Identity)
+	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.Container, typed.Identity, map[string]any{
+		"attckTechniqueID": string(e.AttckTechniqueID()),
+		"attckTacticID":    string(e.AttckTacticID()),
+	})
 }
 
 func (e *IdentityAssumeContainer) Stream(ctx context.Context, store storedb.Provider, _ cache.CacheReader,
 	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback) error {
 
-	containers := adapter.MongoDB(store).Collection(collections.ContainerName)
+	containers := adapter.MongoDB(ctx, store).Collection(collections.ContainerName)
 	pipeline := bson.A{
 		bson.M{
 			"$match": bson.M{
-				"runtime.runID":   e.runtime.RunID.String(),
-				"runtime.cluster": e.runtime.ClusterName,
+				"runtime.runID":        e.runtime.RunID.String(),
+				"runtime.cluster.name": e.runtime.Cluster.Name,
 			},
 		},
 		bson.M{
@@ -80,8 +91,8 @@ func (e *IdentityAssumeContainer) Stream(ctx context.Context, store storedb.Prov
 								}},
 								bson.M{"type": shared.IdentityTypeSA},
 							},
-							"runtime.runID":   e.runtime.RunID.String(),
-							"runtime.cluster": e.runtime.ClusterName,
+							"runtime.runID":        e.runtime.RunID.String(),
+							"runtime.cluster.name": e.runtime.Cluster.Name,
 						},
 					},
 					{

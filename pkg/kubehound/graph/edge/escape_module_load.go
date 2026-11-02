@@ -29,15 +29,26 @@ func (e *EscapeModuleLoad) Name() string {
 	return "ContainerEscapeModuleLoad"
 }
 
+func (e *EscapeModuleLoad) AttckTechniqueID() AttckTechniqueID {
+	return AttckTechniqueEscapeToHost
+}
+
+func (e *EscapeModuleLoad) AttckTacticID() AttckTacticID {
+	return AttckTacticPrivilegeEscalation
+}
+
 // Processor delegates the processing tasks to the generic containerEscapeProcessor.
 func (e *EscapeModuleLoad) Processor(ctx context.Context, oic *converter.ObjectIDConverter, entry any) (any, error) {
-	return containerEscapeProcessor(ctx, oic, e.Label(), entry)
+	return containerEscapeProcessor(ctx, oic, e.Label(), entry, map[string]any{
+		"attckTechniqueID": string(e.AttckTechniqueID()),
+		"attckTacticID":    string(e.AttckTacticID()),
+	})
 }
 
 func (e *EscapeModuleLoad) Stream(ctx context.Context, store storedb.Provider, _ cache.CacheReader,
 	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback) error {
 
-	containers := adapter.MongoDB(store).Collection(collections.ContainerName)
+	containers := adapter.MongoDB(ctx, store).Collection(collections.ContainerName)
 
 	// Escape is possible with privileged containers or CAP_SYS_MODULE loaded explicitly
 	filter := bson.M{
@@ -45,8 +56,8 @@ func (e *EscapeModuleLoad) Stream(ctx context.Context, store storedb.Provider, _
 			bson.M{"k8.securitycontext.privileged": true},
 			bson.M{"k8.securitycontext.capabilities.add": "SYS_MODULE"},
 		},
-		"runtime.runID":   e.runtime.RunID.String(),
-		"runtime.cluster": e.runtime.ClusterName,
+		"runtime.runID":        e.runtime.RunID.String(),
+		"runtime.cluster.name": e.runtime.Cluster.Name,
 	}
 
 	// We just need a 1:1 mapping of the node and container to create this edge

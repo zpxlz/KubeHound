@@ -29,7 +29,6 @@ func Test_sanitizeExtractPath(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if err := sanitizeExtractPath(tt.args.filePath, tt.args.destination); (err != nil) != tt.wantErr {
@@ -82,7 +81,6 @@ func TestCheckSanePath(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if err := CheckSanePath(tt.args.path, tt.args.baseFolder); (err != nil) != tt.wantErr {
@@ -94,6 +92,7 @@ func TestCheckSanePath(t *testing.T) {
 
 func TestExtractTarGz(t *testing.T) {
 	t.Parallel()
+	ctx := t.Context()
 	type args struct {
 		maxArchiveSize int64
 	}
@@ -122,21 +121,82 @@ func TestExtractTarGz(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tmpPath, err := os.MkdirTemp("/tmp", "kubehound-test")
-			defer os.RemoveAll(tmpPath)
-			if err != nil {
-				t.Error(err)
-			}
-			if err := ExtractTarGz("./testdata/archive.tar.gz", tmpPath, tt.args.maxArchiveSize); (err != nil) != tt.wantErr {
+			tmpPath := t.TempDir()
+			dryRun := false
+			if err := ExtractTarGz(ctx, dryRun, "./testdata/archive.tar.gz", tmpPath, tt.args.maxArchiveSize); (err != nil) != tt.wantErr {
 				t.Errorf("ExtractTarGz() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			for _, file := range tt.expectedFiles {
 				if _, err := os.Stat(tmpPath + "/test-cluster/" + file); os.IsNotExist(err) {
 					t.Errorf("ExtractTarGz() file = %v, wantErr %v", file, err)
 				}
+			}
+		})
+	}
+}
+
+func TestIsTarGz(t *testing.T) {
+	t.Parallel()
+	type args struct {
+		filePath       string
+		maxArchiveSize int64
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "dump result compressed",
+			args: args{
+				maxArchiveSize: 10000000,
+				filePath:       "./testdata/archive.tar.gz",
+			},
+			want:    true,
+			wantErr: false,
+		},
+		{
+			name: "Unsupported file type",
+			args: args{
+				maxArchiveSize: 100,
+				filePath:       "./testdata/regenerate-testdata.sh",
+			},
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name: "wrong path",
+			args: args{
+				maxArchiveSize: 100,
+				filePath:       "./testdata/doesnotexist.tar.gz",
+			},
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name: "dump result not compressed - directory",
+			args: args{
+				maxArchiveSize: 100,
+				filePath:       "./testdata/",
+			},
+			want:    false,
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := IsTarGz(t.Context(), tt.args.filePath, tt.args.maxArchiveSize)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("IsTarGz() error = %v, wantErr %v", err, tt.wantErr)
+
+				return
+			}
+			if got != tt.want {
+				t.Errorf("IsTarGz() = %v, want %v", got, tt.want)
 			}
 		})
 	}

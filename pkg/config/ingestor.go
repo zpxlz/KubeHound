@@ -1,20 +1,21 @@
 package config
 
 const (
-	DefaultIngestorAPIEndpoint = "127.0.0.1:9000"
+	DefaultIngestorAPIEndpoint = ""
 	DefaultIngestorAPIInsecure = false
 	DefaultBucketName          = "" // we want to let it empty because we can easily abort if it's not configured
 	DefaultTempDir             = "/tmp/kubehound"
 	DefaultArchiveName         = "archive.tar.gz"
-	DefaultMaxArchiveSize      = int64(1 << 30) // 1GB
+	DefaultMaxArchiveSize      = int64(2 << 30) // 2GB
 
-	IngestorAPIEndpoint = "ingestor.api.endpoint"
-	IngestorAPIInsecure = "ingestor.api.insecure"
-	IngestorClusterName = "ingestor.cluster_name"
-	IngestorRunID       = "ingestor.run_id"
+	IngestorAPIEndpoint    = "ingestor.api.endpoint"
+	IngestorAPIInsecure    = "ingestor.api.insecure"
+	IngestorMaxArchiveSize = "ingestor.max_archive_size"
+	IngestorTempDir        = "ingestor.temp_dir"
+	IngestorArchiveName    = "ingestor.archive_name"
 
-	IngestorBlobBucketName = "ingestor.blob.bucket_name"
-	IngestorBlobRegion     = "ingestor.blob.region"
+	IngestorBlobBucketURL = "ingestor.blob.bucket_url"
+	IngestorBlobRegion    = "ingestor.blob.region"
 )
 
 type IngestorConfig struct {
@@ -23,11 +24,14 @@ type IngestorConfig struct {
 	TempDir        string            `mapstructure:"temp_dir"`
 	ArchiveName    string            `mapstructure:"archive_name"`
 	MaxArchiveSize int64             `mapstructure:"max_archive_size"`
-	ClusterName    string            `mapstructure:"cluster_name"`
-	RunID          string            `mapstructure:"run_id"`
 }
 
 type IngestorAPIConfig struct {
 	Endpoint string `mapstructure:"endpoint"`
 	Insecure bool   `mapstructure:"insecure" validate:"omitempty,boolean"`
+}
+
+type BlobConfig struct {
+	BucketUrl string `mapstructure:"bucket_url"` // Bucket to use to push k8s resources (e.g.: s3://<your_bucket>)
+	Region    string `mapstructure:"region"`     // Region to use for the bucket (only for s3)
 }

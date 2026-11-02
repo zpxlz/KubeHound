@@ -39,26 +39,37 @@ func (e *RoleBindRbRbR) Name() string {
 	return RoleBindspaceName
 }
 
+func (e *RoleBindRbRbR) AttckTechniqueID() AttckTechniqueID {
+	return AttckTechniqueValidAccounts
+}
+
+func (e *RoleBindRbRbR) AttckTacticID() AttckTacticID {
+	return AttckTacticPrivilegeEscalation
+}
+
 func (e *RoleBindRbRbR) Processor(ctx context.Context, oic *converter.ObjectIDConverter, entry any) (any, error) {
 	typed, ok := entry.(*roleBindNameSpaceGroup)
 	if !ok {
 		return nil, fmt.Errorf("invalid type passed to processor: %T", entry)
 	}
 
-	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.FromPerm, typed.ToPerm)
+	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.FromPerm, typed.ToPerm, map[string]any{
+		"attckTechniqueID": string(e.AttckTechniqueID()),
+		"attckTacticID":    string(e.AttckTacticID()),
+	})
 }
 
 func (e *RoleBindRbRbR) Stream(ctx context.Context, store storedb.Provider, c cache.CacheReader,
 	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback) error {
 
-	permissionSets := adapter.MongoDB(store).Collection(collections.PermissionSetName)
+	permissionSets := adapter.MongoDB(ctx, store).Collection(collections.PermissionSetName)
 	pipeline := bson.A{
 		bson.M{
 			"$match": bson.M{
 				// looking for RB CR/R role only
-				"is_namespaced":   true,
-				"runtime.runID":   e.runtime.RunID.String(),
-				"runtime.cluster": e.runtime.ClusterName,
+				"is_namespaced":        true,
+				"runtime.runID":        e.runtime.RunID.String(),
+				"runtime.cluster.name": e.runtime.Cluster.Name,
 				"$and": []bson.M{
 					// Looking for RBAC objects
 					{
@@ -145,8 +156,8 @@ func (e *RoleBindRbRbR) Stream(ctx context.Context, store storedb.Provider, c ca
 								}},
 								bson.M{"is_namespaced": true},
 							},
-							"runtime.runID":   e.runtime.RunID.String(),
-							"runtime.cluster": e.runtime.ClusterName,
+							"runtime.runID":        e.runtime.RunID.String(),
+							"runtime.cluster.name": e.runtime.Cluster.Name,
 						},
 					},
 					{

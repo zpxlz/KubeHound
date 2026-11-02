@@ -3,6 +3,7 @@ package span
 import (
 	"context"
 
+	"github.com/DataDog/KubeHound/pkg/telemetry/log"
 	"github.com/DataDog/KubeHound/pkg/telemetry/tag"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
@@ -38,6 +39,7 @@ const (
 	IngestorBlobPut     = "kubehound.ingestor.blob.put"
 	IngestorBlobExtract = "kubehound.ingestor.blob.extract"
 	IngestorBlobClose   = "kubehound.ingestor.blob.close"
+	IngestorClean       = "kubehound.ingestor.clean"
 
 	DumperLaunch = "kubehound.dumper.launch"
 
@@ -48,6 +50,7 @@ const (
 	DumperClusterRoles        = "kubehound.dumper.clusterroles"
 	DumperRoleBindings        = "kubehound.dumper.rolebindings"
 	DumperClusterRoleBindings = "kubehound.dumper.clusterrolebindings"
+	DumperMetadata            = "kubehound.dumper.metadata"
 
 	DumperReadFile    = "kubehound.dumper.readFile"
 	DumperS3Push      = "kubehound.dumper.s3_push"
@@ -62,15 +65,6 @@ const (
 	BuildEdge = "kubehound.graph.builder.edge"
 )
 
-// to avoid the following lint error
-// should not use built-in type string as key for value; define your own type to avoid collisions (SA1029)
-type contextKey int
-
-const (
-	ContextLogFieldClusterName contextKey = iota
-	ContextLogFieldRunID
-)
-
 func convertTag(value any) string {
 	val, err := value.(string)
 	if !err {
@@ -80,14 +74,21 @@ func convertTag(value any) string {
 	return val
 }
 
-func SpanIngestRunFromContext(runCtx context.Context, spanName string) (ddtrace.Span, context.Context) {
-	spanJob, runCtx := tracer.StartSpanFromContext(runCtx, spanName, tracer.ResourceName(convertTag(runCtx.Value(ContextLogFieldClusterName))), tracer.Measured())
+func StartSpanFromContext(runCtx context.Context, operationName string, opts ...tracer.StartSpanOption) (tracer.Span, context.Context) {
+	spanJob, runCtx := tracer.StartSpanFromContext(runCtx, operationName, opts...)
+	spanIngestRunSetDefaultTag(runCtx, spanJob)
+
+	return spanJob, runCtx
+}
+
+func SpanRunFromContext(runCtx context.Context, spanName string) (ddtrace.Span, context.Context) {
+	spanJob, runCtx := tracer.StartSpanFromContext(runCtx, spanName, tracer.ResourceName(convertTag(runCtx.Value(log.ContextFieldCluster))), tracer.Measured())
 	spanIngestRunSetDefaultTag(runCtx, spanJob)
 
 	return spanJob, runCtx
 }
 
 func spanIngestRunSetDefaultTag(ctx context.Context, span ddtrace.Span) {
-	span.SetTag(tag.CollectorClusterTag, convertTag(ctx.Value(ContextLogFieldClusterName)))
-	span.SetTag(tag.RunIdTag, convertTag(ctx.Value(ContextLogFieldRunID)))
+	span.SetTag(tag.CollectorClusterTag, convertTag(ctx.Value(log.ContextFieldCluster)))
+	span.SetTag(tag.RunIdTag, convertTag(ctx.Value(log.ContextFieldRunID)))
 }

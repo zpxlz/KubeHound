@@ -10,13 +10,16 @@ import (
 	"github.com/DataDog/KubeHound/pkg/kubehound/graph/vertex"
 	"github.com/DataDog/KubeHound/pkg/kubehound/storage/cache"
 	"github.com/DataDog/KubeHound/pkg/telemetry/log"
+	"github.com/DataDog/KubeHound/pkg/telemetry/span"
 	"github.com/DataDog/KubeHound/pkg/telemetry/tag"
 	gremlin "github.com/apache/tinkerpop/gremlin-go/v3/driver"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
 const (
 	channelSizeBatchFactor = 4 // TODO maybe move that into a config file?
 	StorageProviderName    = "janusgraph"
+	deleteBatchSize        = 10000
 )
 
 var (
@@ -64,23 +67,54 @@ func (jgp *JanusGraphProvider) Prepare(ctx context.Context) error {
 		return nil
 	}
 
-	g := gremlin.Traversal_().WithRemote(jgp.drc)
-	tx := g.Tx()
-	defer tx.Close()
+	// These vertex types are defined in the schema.
+	for _, vertexType := range vertex.Labels {
+		g := gremlin.Traversal_().WithRemote(jgp.drc)
+		tx := g.Tx()
+		defer tx.Close()
 
-	gtx, err := tx.Begin()
-	if err != nil {
-		return err
-	}
+		for {
+			// Begin a new transaction.
+			gtx, err := tx.Begin()
+			if err != nil {
+				return err
+			}
 
-	err = <-gtx.V().Drop().Iterate()
-	if err != nil {
-		return err
-	}
+			// Retrieve the number of vertices in the graph.
+			page, err := gtx.V().Has("class", vertexType).Count().Next()
+			if err != nil {
+				return err
+			}
 
-	err = tx.Commit()
-	if err != nil {
-		return err
+			// Decode the number of vertices from the page.
+			count, err := page.GetInt()
+			if err != nil {
+				return err
+			}
+
+			// If there are no more vertices to delete, break the loop.
+			if count == 0 {
+				break
+			}
+
+			// Delete the vertices in the graph.
+			err = <-gtx.V().Has("class", vertexType).Limit(deleteBatchSize).Drop().Iterate()
+			if err != nil {
+				return err
+			}
+
+			// Commit the transaction.
+			if err := tx.Commit(); err != nil {
+				return err
+			}
+
+			// Check context for cancellation.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+		}
 	}
 
 	return nil
@@ -128,6 +162,9 @@ func (jgp *JanusGraphProvider) VertexWriter(ctx context.Context, v vertex.Builde
 	c cache.CacheProvider, opts ...WriterOption) (AsyncVertexWriter, error) {
 
 	opts = append(opts, WithTags(jgp.tags))
+	opts = append(opts, WithWriterWorkerCount(jgp.cfg.JanusGraph.WriterWorkerCount))
+	opts = append(opts, WithWriterTimeout(jgp.cfg.JanusGraph.WriterTimeout))
+	opts = append(opts, WithWriterMaxRetry(jgp.cfg.JanusGraph.WriterMaxRetry))
 
 	return NewJanusGraphAsyncVertexWriter(ctx, jgp.drc, v, c, opts...)
 }
@@ -135,6 +172,9 @@ func (jgp *JanusGraphProvider) VertexWriter(ctx context.Context, v vertex.Builde
 // EdgeWriter creates a new AsyncEdgeWriter instance to enable asynchronous bulk inserts of edges.
 func (jgp *JanusGraphProvider) EdgeWriter(ctx context.Context, e edge.Builder, opts ...WriterOption) (AsyncEdgeWriter, error) {
 	opts = append(opts, WithTags(jgp.tags))
+	opts = append(opts, WithWriterWorkerCount(jgp.cfg.JanusGraph.WriterWorkerCount))
+	opts = append(opts, WithWriterTimeout(jgp.cfg.JanusGraph.WriterTimeout))
+	opts = append(opts, WithWriterMaxRetry(jgp.cfg.JanusGraph.WriterMaxRetry))
 
 	return NewJanusGraphAsyncEdgeWriter(ctx, jgp.drc, e, opts...)
 }
@@ -142,6 +182,63 @@ func (jgp *JanusGraphProvider) EdgeWriter(ctx context.Context, e edge.Builder, o
 // Close cleans up any resources used by the Provider implementation. Provider cannot be reused after this call.
 func (jgp *JanusGraphProvider) Close(ctx context.Context) error {
 	jgp.drc.Close()
+
+	return nil
+}
+
+// Clean removes all vertices in the graph for the given cluster.
+func (jgp *JanusGraphProvider) Clean(ctx context.Context, cluster string) error {
+	var err error
+	span, ctx := span.SpanRunFromContext(ctx, span.IngestorClean)
+	defer func() { span.Finish(tracer.WithError(err)) }()
+	l := log.Trace(ctx)
+	l.Info("Cleaning cluster", log.String(log.FieldClusterKey, cluster))
+	g := gremlin.Traversal_().WithRemote(jgp.drc)
+	tx := g.Tx()
+	defer tx.Close()
+
+	for {
+		// Begin a new transaction.
+		gtx, err := tx.Begin()
+		if err != nil {
+			return err
+		}
+
+		// Retrieve the number of vertices in the graph for the given cluster.
+		page, err := gtx.V().Has("cluster", cluster).Count().Next()
+		if err != nil {
+			return err
+		}
+
+		// Decode the number of vertices from the page.
+		count, err := page.GetInt()
+		if err != nil {
+			return err
+		}
+
+		// If there are no more vertices to delete, break the loop.
+		if count == 0 {
+			break
+		}
+
+		// Delete the vertices in the graph for the given cluster.
+		err = <-gtx.V().Has("cluster", cluster).Limit(deleteBatchSize).Drop().Iterate()
+		if err != nil {
+			return err
+		}
+
+		// Commit the transaction.
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+
+		// Check context for cancellation.
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+	}
 
 	return nil
 }

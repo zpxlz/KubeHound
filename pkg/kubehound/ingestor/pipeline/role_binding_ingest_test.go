@@ -25,7 +25,7 @@ func TestRoleBindingIngest_Pipeline(t *testing.T) {
 	t.Parallel()
 
 	ri := &RoleBindingIngest{}
-	ctx := context.Background()
+	ctx := t.Context()
 	fakeRb, err := loadTestObject[types.RoleBindingType]("testdata/rolebinding.json")
 	assert.NoError(t, err)
 
@@ -155,8 +155,10 @@ func TestRoleBindingIngest_Pipeline(t *testing.T) {
 				Edge: config.EdgeBuilderConfig{},
 			},
 			Dynamic: config.DynamicConfig{
-				RunID:       testID,
-				ClusterName: "test-cluster",
+				RunID: testID,
+				Cluster: config.DynamicClusterInfo{
+					Name: "test-cluster",
+				},
 			},
 		},
 	}

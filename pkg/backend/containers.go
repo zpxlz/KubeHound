@@ -1,3 +1,5 @@
+//go:build no_backend
+
 package backend
 
 import (
@@ -20,19 +22,19 @@ var (
 
 type Backend struct {
 	project        *types.Project
-	composeService api.Service
+	composeService api.Compose
 	dockerCli      *command.DockerCli
 }
 
-func NewBackend(ctx context.Context, composeFilePaths []string) error {
+func NewBackend(ctx context.Context, composeFilePaths []string, profiles []string) error {
 	var err error
-	currentBackend, err = newBackend(ctx, composeFilePaths)
+	currentBackend, err = newBackend(ctx, composeFilePaths, profiles)
 
 	return err
 }
 
-func newBackend(ctx context.Context, composeFilePaths []string) (*Backend, error) {
-	project, err := loadProject(ctx, composeFilePaths)
+func newBackend(ctx context.Context, composeFilePaths []string, profiles []string) (*Backend, error) {
+	project, err := loadProject(ctx, composeFilePaths, profiles)
 	if err != nil {
 		return nil, err
 	}
@@ -66,14 +68,15 @@ func newDockerCli() (*command.DockerCli, error) {
 	return dockerCli, nil
 }
 
-func BuildUp(ctx context.Context) error {
-	return currentBackend.buildUp(ctx)
+func BuildUp(ctx context.Context, noCache bool) error {
+	return currentBackend.buildUp(ctx, noCache)
 }
 
-func (b *Backend) buildUp(ctx context.Context) error {
-	log.I.Infof("Building the kubehound stack")
+func (b *Backend) buildUp(ctx context.Context, noCache bool) error {
+	l := log.Logger(ctx)
+	l.Info("Building the kubehound stack")
 	err := b.composeService.Build(ctx, b.project, api.BuildOptions{
-		NoCache: true,
+		NoCache: noCache,
 		Pull:    true,
 	})
 	if err != nil {
@@ -88,9 +91,10 @@ func Up(ctx context.Context) error {
 }
 
 func (b *Backend) up(ctx context.Context) error {
-	log.I.Infof("Spawning the kubehound stack")
+	l := log.Logger(ctx)
+	l.Info("Spawning the kubehound stack")
 
-	return b.composeService.Up(ctx, b.project, api.UpOptions{
+	err := b.composeService.Up(ctx, b.project, api.UpOptions{
 		Create: api.CreateOptions{
 			Build: &api.BuildOptions{
 				NoCache: true,
@@ -105,6 +109,11 @@ func (b *Backend) up(ctx context.Context) error {
 			Watch: true,
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("error starting the kubehound stack: %w. Please make sure your Docker is correctly installed and that you have enough disk space available. ", err)
+	}
+
+	return nil
 }
 
 func Down(ctx context.Context) error {
@@ -112,13 +121,19 @@ func Down(ctx context.Context) error {
 }
 
 func (b *Backend) down(ctx context.Context) error {
-	log.I.Info("Tearing down the kubehound stack")
+	l := log.Logger(ctx)
+	l.Info("Tearing down the kubehound stack")
 
-	return b.composeService.Remove(ctx, b.project.Name, api.RemoveOptions{
+	err := b.composeService.Remove(ctx, b.project.Name, api.RemoveOptions{
 		Stop:    true,
 		Volumes: true,
 		Force:   true,
 	})
+	if err != nil {
+		return fmt.Errorf("error shuting down kubehound stack: %w", err)
+	}
+
+	return nil
 }
 
 func Reset(ctx context.Context) error {
@@ -165,10 +180,11 @@ func Wipe(ctx context.Context) error {
 
 func (b *Backend) wipe(ctx context.Context) error {
 	var err error
-	log.I.Infof("Wipping the persisted backend data")
+	l := log.Logger(ctx)
+	l.Info("Wiping the persisted backend data")
 
 	for _, volumeID := range b.project.VolumeNames() {
-		log.I.Infof("Deleting volume %s", volumeID)
+		l.Info("Deleting volume", log.String("volume", volumeID))
 		err = errors.Join(err, b.dockerCli.Client().VolumeRemove(ctx, volumeID, true))
 	}
 

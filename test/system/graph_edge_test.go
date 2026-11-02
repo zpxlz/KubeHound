@@ -2,8 +2,6 @@
 package system
 
 import (
-	"context"
-
 	"github.com/DataDog/KubeHound/pkg/config"
 	"github.com/DataDog/KubeHound/pkg/kubehound/models/shared"
 	"github.com/DataDog/KubeHound/pkg/kubehound/storage/graphdb"
@@ -19,7 +17,8 @@ type EdgeTestSuite struct {
 }
 
 func (suite *EdgeTestSuite) SetupTest() {
-	gdb, err := graphdb.Factory(context.Background(), config.MustLoadConfig(KubeHoundConfigPath))
+	ctx := suite.T().Context()
+	gdb, err := graphdb.Factory(ctx, config.MustLoadConfig(ctx, KubeHoundConfigPath))
 	suite.Require().NoError(err)
 	suite.gdb = gdb
 	suite.client = gdb.Raw().(*gremlingo.DriverRemoteConnection)
@@ -130,10 +129,18 @@ func (suite *EdgeTestSuite) TestEdge_CE_SYS_PTRACE() {
 	suite._testContainerEscape("CE_SYS_PTRACE", DefaultContainerEscapeNodes, containers)
 }
 
+func (suite *EdgeTestSuite) TestEdge_CE_UMH_CORE_PATTERN() {
+	containers := map[string]bool{
+		"umh-core-container": true,
+	}
+
+	suite._testContainerEscape("CE_UMH_CORE_PATTERN", DefaultContainerEscapeNodes, containers)
+}
+
 func (suite *EdgeTestSuite) TestEdge_CONTAINER_ATTACH() {
 	// Every container should have a CONTAINER_ATTACH incoming from a pod
 	rawCount, err := suite.g.V().
-		HasLabel("Container").
+		Has("class", "Container").
 		Count().Next()
 
 	suite.NoError(err)
@@ -142,9 +149,9 @@ func (suite *EdgeTestSuite) TestEdge_CONTAINER_ATTACH() {
 	suite.NotEqual(containerCount, 0)
 
 	rawCount, err = suite.g.V().
-		HasLabel("Pod").
+		Has("class", "Pod").
 		OutE().HasLabel("CONTAINER_ATTACH").
-		InV().HasLabel("Container").
+		InV().Has("class", "Container").
 		Dedup().
 		Path().
 		Count().Next()
@@ -168,9 +175,9 @@ func (suite *EdgeTestSuite) TestEdge_IDENTITY_ASSUME_Container() {
 	// tokenlist-sa     0         7h39m
 
 	results, err := suite.g.V().
-		HasLabel("Container").
+		Has("class", "Container").
 		OutE().HasLabel("IDENTITY_ASSUME").
-		InV().HasLabel("Identity").
+		InV().Has("class", "Identity").
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -203,9 +210,9 @@ func (suite *EdgeTestSuite) TestEdge_IDENTITY_ASSUME_Container() {
 
 func (suite *EdgeTestSuite) TestEdge_IDENTITY_ASSUME_Node() {
 	results, err := suite.g.V().
-		HasLabel("Node").
+		Has("class", "Node").
 		OutE().HasLabel("IDENTITY_ASSUME").
-		InV().HasLabel("Identity").
+		InV().Has("class", "Identity").
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -225,7 +232,7 @@ func (suite *EdgeTestSuite) TestEdge_IDENTITY_ASSUME_Node() {
 func (suite *EdgeTestSuite) TestEdge_POD_ATTACH() {
 	// Every pod should have a POD_ATTACH incoming from a node
 	rawCount, err := suite.g.V().
-		HasLabel("Pod").
+		Has("class", "Pod").
 		Count().Next()
 
 	suite.NoError(err)
@@ -234,9 +241,9 @@ func (suite *EdgeTestSuite) TestEdge_POD_ATTACH() {
 	suite.NotEqual(podCount, 0)
 
 	rawCount, err = suite.g.V().
-		HasLabel("Node").
+		Has("class", "Node").
 		OutE().HasLabel("POD_ATTACH").
-		InV().HasLabel("Pod").
+		InV().Has("class", "Pod").
 		Dedup().
 		Path().
 		Count().Next()
@@ -251,10 +258,10 @@ func (suite *EdgeTestSuite) TestEdge_POD_PATCH() {
 	// We have one bespoke container running with pod/patch permissions which should reach all nodes
 	// since they are not namespaced
 	results, err := suite.g.V().
-		HasLabel("PermissionSet").
+		Has("class", "PermissionSet").
 		Has("namespace", "default").
 		OutE().HasLabel("POD_PATCH").
-		InV().HasLabel("Pod").
+		InV().Has("class", "Pod").
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -300,10 +307,10 @@ func (suite *EdgeTestSuite) TestEdge_POD_CREATE() {
 	// We have one bespoke container running with pod/create permissions which should reach all nodes
 	// since they are not namespaced
 	results, err := suite.g.V().
-		HasLabel("PermissionSet").
+		Has("class", "PermissionSet").
 		Has("namespace", "default").
 		OutE().HasLabel("POD_CREATE").
-		InV().HasLabel("Node").
+		InV().Has("class", "Node").
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -323,10 +330,10 @@ func (suite *EdgeTestSuite) TestEdge_POD_CREATE() {
 func (suite *EdgeTestSuite) TestEdge_POD_EXEC() {
 	// We have one bespoke container running with pod/exec permissions which should reach all pods in the namespace
 	results, err := suite.g.V().
-		HasLabel("PermissionSet").
+		Has("class", "PermissionSet").
 		Has("namespace", "default").
 		OutE().HasLabel("POD_EXEC").
-		InV().HasLabel("Pod").
+		InV().Has("class", "Pod").
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -382,10 +389,10 @@ func (suite *EdgeTestSuite) TestEdge_PERMISSION_DISCOVER() {
 	// tokenget-sa      0         7h39m
 	// tokenlist-sa     0         7h39m
 	results, err := suite.g.V().
-		HasLabel("Identity").
+		Has("class", "Identity").
 		Has("namespace", "default").
 		OutE().HasLabel("PERMISSION_DISCOVER").
-		InV().HasLabel("PermissionSet").
+		InV().Has("class", "PermissionSet").
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -420,7 +427,7 @@ func (suite *EdgeTestSuite) TestEdge_PERMISSION_DISCOVER() {
 func (suite *EdgeTestSuite) TestEdge_VOLUME_ACCESS() {
 	// Every volume should have a VOLUME_ACCESS incoming from a node
 	rawCount, err := suite.g.V().
-		HasLabel("Volume").
+		Has("class", "Volume").
 		Count().Next()
 
 	suite.NoError(err)
@@ -429,9 +436,9 @@ func (suite *EdgeTestSuite) TestEdge_VOLUME_ACCESS() {
 	suite.NotEqual(volumeCount, 0)
 
 	rawCount, err = suite.g.V().
-		HasLabel("Node").
+		Has("class", "Node").
 		OutE().HasLabel("VOLUME_ACCESS").
-		InV().HasLabel("Volume").
+		InV().Has("class", "Volume").
 		Dedup().
 		Path().
 		Count().Next()
@@ -445,7 +452,7 @@ func (suite *EdgeTestSuite) TestEdge_VOLUME_ACCESS() {
 func (suite *EdgeTestSuite) TestEdge_VOLUME_DISCOVER() {
 	// Every volume should have a VOLUME_DISCOVER incoming from a container
 	rawCount, err := suite.g.V().
-		HasLabel("Volume").
+		Has("class", "Volume").
 		Count().Next()
 
 	suite.NoError(err)
@@ -454,9 +461,9 @@ func (suite *EdgeTestSuite) TestEdge_VOLUME_DISCOVER() {
 	suite.NotEqual(volumeCount, 0)
 
 	rawCount, err = suite.g.V().
-		HasLabel("Container").
+		Has("class", "Container").
 		OutE().HasLabel("VOLUME_DISCOVER").
-		InV().HasLabel("Volume").
+		InV().Has("class", "Volume").
 		Dedup().
 		Path().
 		Count().Next()
@@ -469,10 +476,10 @@ func (suite *EdgeTestSuite) TestEdge_VOLUME_DISCOVER() {
 
 func (suite *EdgeTestSuite) TestEdge_TOKEN_BRUTEFORCE() {
 	results, err := suite.g.V().
-		HasLabel("PermissionSet").
+		Has("class", "PermissionSet").
 		Has("namespace", "default").
 		OutE().HasLabel("TOKEN_BRUTEFORCE").
-		InV().HasLabel("Identity").
+		InV().Has("class", "Identity").
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -505,10 +512,10 @@ func (suite *EdgeTestSuite) TestEdge_TOKEN_BRUTEFORCE() {
 
 func (suite *EdgeTestSuite) TestEdge_TOKEN_LIST() {
 	results, err := suite.g.V().
-		HasLabel("PermissionSet").
+		Has("class", "PermissionSet").
 		Has("namespace", "default").
 		OutE().HasLabel("TOKEN_LIST").
-		InV().HasLabel("Identity").
+		InV().Has("class", "Identity").
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -543,11 +550,11 @@ func (suite *EdgeTestSuite) TestEdge_TOKEN_STEAL() {
 	// Every pod in our test cluster should have projected volume holding a token. BUT we only
 	// save those with a non-default service account token as shown below.
 	results, err := suite.g.V().
-		HasLabel("Volume").
+		Has("class", "Volume").
 		OutE().
 		HasLabel("TOKEN_STEAL").
 		InV().
-		HasLabel("Identity").
+		Has("class", "Identity").
 		Has("namespace", "default").
 		Values("name").
 		ToList()
@@ -580,11 +587,11 @@ func (suite *EdgeTestSuite) TestEdge_TOKEN_STEAL() {
 
 func (suite *EdgeTestSuite) TestEdge_EXPLOIT_HOST_READ() {
 	results, err := suite.g.V().
-		HasLabel("Container").
+		Has("class", "Container").
 		OutE().HasLabel("VOLUME_DISCOVER").
-		InV().HasLabel("Volume").
+		InV().Has("class", "Volume").
 		Where(__.OutE().HasLabel("EXPLOIT_HOST_READ").
-			InV().HasLabel("Node")).
+			InV().Has("class", "Node")).
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -601,11 +608,11 @@ func (suite *EdgeTestSuite) TestEdge_EXPLOIT_HOST_READ() {
 
 func (suite *EdgeTestSuite) TestEdge_EXPLOIT_HOST_WRITE() {
 	results, err := suite.g.V().
-		HasLabel("Container").
+		Has("class", "Container").
 		OutE().HasLabel("VOLUME_DISCOVER").
-		InV().HasLabel("Volume").
+		InV().Has("class", "Volume").
 		Where(__.OutE().HasLabel("EXPLOIT_HOST_WRITE").
-			InV().HasLabel("Node")).
+			InV().Has("class", "Node")).
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -624,10 +631,10 @@ func (suite *EdgeTestSuite) TestEdge_EXPLOIT_HOST_TRAVERSE() {
 	for _, c := range []string{"host-read-exploit-pod", "host-write-exploit-pod"} {
 		// Find the containers on the same node as our vulnerable pod and map to their service accounts
 		results, err := suite.g.V().
-			HasLabel("Container").
+			Has("class", "Container").
 			Has("name", c).
 			Values("node").As("n").
-			V().HasLabel("Container").
+			V().Has("class", "Container").
 			Has("node", __.Where(P.Eq("n"))).
 			OutE("IDENTITY_ASSUME").
 			InV().
@@ -640,14 +647,14 @@ func (suite *EdgeTestSuite) TestEdge_EXPLOIT_HOST_TRAVERSE() {
 
 		// Now find the identities our vulnerable pod can reach via doing a traverse to the projected token volume
 		results, err = suite.g.V().
-			HasLabel("Container").
+			Has("class", "Container").
 			Has("name", c).
 			OutE().HasLabel("VOLUME_DISCOVER").
-			InV().HasLabel("Volume").
+			InV().Has("class", "Volume").
 			OutE().HasLabel("EXPLOIT_HOST_TRAVERSE").
-			InV().HasLabel("Volume").
+			InV().Has("class", "Volume").
 			OutE().HasLabel("TOKEN_STEAL").
-			InV().HasLabel("Identity").
+			InV().Has("class", "Identity").
 			Values("name").
 			ToList()
 
@@ -662,12 +669,12 @@ func (suite *EdgeTestSuite) TestEdge_EXPLOIT_HOST_TRAVERSE() {
 
 func (suite *EdgeTestSuite) TestEdge_ENDPOINT_EXPLOIT_ContainerPort() {
 	results, err := suite.g.V().
-		HasLabel("Endpoint").
+		Has("class", "Endpoint").
 		Where(
 			__.Has("exposure", P.Eq(int(shared.EndpointExposureClusterIP))).
 				OutE("ENDPOINT_EXPLOIT").
 				InV().
-				HasLabel("Container")).
+				Has("class", "Container")).
 		Values("serviceEndpoint").
 		ToList()
 
@@ -684,12 +691,12 @@ func (suite *EdgeTestSuite) TestEdge_ENDPOINT_EXPLOIT_ContainerPort() {
 
 func (suite *EdgeTestSuite) TestEdge_ENDPOINT_EXPLOIT_NodePort() {
 	results, err := suite.g.V().
-		HasLabel("Endpoint").
+		Has("class", "Endpoint").
 		Where(
 			__.Has("exposure", P.Eq(int(shared.EndpointExposureNodeIP))).
 				OutE("ENDPOINT_EXPLOIT").
 				InV().
-				HasLabel("Container")).
+				Has("class", "Container")).
 		Values("serviceEndpoint").
 		ToList()
 
@@ -706,12 +713,12 @@ func (suite *EdgeTestSuite) TestEdge_ENDPOINT_EXPLOIT_NodePort() {
 
 func (suite *EdgeTestSuite) TestEdge_ENDPOINT_EXPLOIT_External() {
 	results, err := suite.g.V().
-		HasLabel("Endpoint").
+		Has("class", "Endpoint").
 		Where(
 			__.Has("exposure", P.Eq(int(shared.EndpointExposureExternal))).
 				OutE("ENDPOINT_EXPLOIT").
 				InV().
-				HasLabel("Container")).
+				Has("class", "Container")).
 		Values("serviceEndpoint").
 		ToList()
 
@@ -728,9 +735,9 @@ func (suite *EdgeTestSuite) TestEdge_ENDPOINT_EXPLOIT_External() {
 
 func (suite *EdgeTestSuite) TestEdge_SHARE_PS_NAMESPACE() {
 	results, err := suite.g.V().
-		HasLabel("Container").
+		Has("class", "Container").
 		OutE().HasLabel("SHARE_PS_NAMESPACE").
-		InV().HasLabel("Container").
+		InV().Has("class", "Container").
 		Path().
 		By(__.ValueMap("name")).
 		ToList()
@@ -758,10 +765,10 @@ func (suite *EdgeTestSuite) TestEdge_SHARE_PS_NAMESPACE() {
 // Case 1 (cf docs)
 func (suite *EdgeTestSuite) TestEdge_ROLE_BIND_CASE_1() {
 	results, err := suite.g.V().
-		HasLabel("PermissionSet").
+		Has("class", "PermissionSet").
 		Has("isNamespaced", false).
 		OutE().HasLabel("ROLE_BIND").
-		InV().HasLabel("PermissionSet").
+		InV().Has("class", "PermissionSet").
 		Has("isNamespaced", false).
 		// Scoping only to the roles related to the attacks to avoid dependency on the Kind Cluster default roles
 		Has("name", gremlingo.TextP.StartingWith("rolebind")).
@@ -789,10 +796,10 @@ func (suite *EdgeTestSuite) TestEdge_ROLE_BIND_CASE_1() {
 // Case 2 (cf docs)
 func (suite *EdgeTestSuite) TestEdge_ROLE_BIND_CASE_2() {
 	results, err := suite.g.V().
-		HasLabel("PermissionSet").
+		Has("class", "PermissionSet").
 		Has("isNamespaced", false).
 		OutE().HasLabel("ROLE_BIND").
-		InV().HasLabel("PermissionSet").
+		InV().Has("class", "PermissionSet").
 		Has("isNamespaced", false).
 		// Scoping only to the roles related to the attacks to avoid dependency on the Kind Cluster default roles
 		Has("name", gremlingo.TextP.StartingWith("rolebind")).
@@ -820,10 +827,10 @@ func (suite *EdgeTestSuite) TestEdge_ROLE_BIND_CASE_2() {
 // Case 3 (cf docs)
 func (suite *EdgeTestSuite) TestEdge_ROLE_BIND_CASE_3() {
 	results, err := suite.g.V().
-		HasLabel("PermissionSet").
+		Has("class", "PermissionSet").
 		Has("isNamespaced", true).
 		OutE().HasLabel("ROLE_BIND").
-		InV().HasLabel("PermissionSet").
+		InV().Has("class", "PermissionSet").
 		Has("isNamespaced", true).
 		// Scoping only to the roles related to the attacks to avoid dependency on the Kind Cluster default roles
 		Has("name", gremlingo.TextP.StartingWith("rolebind-")).
@@ -887,10 +894,10 @@ func (suite *EdgeTestSuite) TestEdge_ROLE_BIND_CASE_3() {
 // Case 4 (cf docs)
 func (suite *EdgeTestSuite) TestEdge_ROLE_BIND_CASE_4() {
 	results, err := suite.g.V().
-		HasLabel("PermissionSet").
+		Has("class", "PermissionSet").
 		Has("isNamespaced", true).
 		OutE().HasLabel("ROLE_BIND").
-		InV().HasLabel("PermissionSet").
+		InV().Has("class", "PermissionSet").
 		Has("isNamespaced", false).
 		// Scoping only to the roles related to the attacks to avoid dependency on the Kind Cluster default roles
 		Has("name", gremlingo.TextP.StartingWith("rolebind")).
@@ -910,7 +917,7 @@ func (suite *EdgeTestSuite) TestEdge_ROLE_BIND_CASE_4() {
 func (suite *EdgeTestSuite) Test_NoEdgeCase() {
 	// The control pod has no interesting properties and therefore should have NO outgoing edges
 	results, err := suite.g.V().
-		HasLabel("Container").
+		Has("class", "Container").
 		Has("name", "control-pod").
 		Out().
 		ToList()
@@ -928,5 +935,5 @@ func (suite *EdgeTestSuite) Test_CE_VAR_LOG_SYMLINK() {
 }
 
 func (suite *EdgeTestSuite) TearDownTest() {
-	suite.gdb.Close(context.Background())
+	suite.gdb.Close(suite.T().Context())
 }

@@ -95,7 +95,7 @@ func (c *StoreConverter) Node(ctx context.Context, input types.NodeType) (*store
 	output := &store.Node{
 		Id:        store.ObjectID(),
 		K8:        *input,
-		Ownership: store.ExtractOwnership(input.ObjectMeta.Labels),
+		Ownership: store.ExtractOwnership(input.Labels),
 		Runtime:   store.Runtime(c.runtime),
 	}
 
@@ -134,7 +134,7 @@ func (c *StoreConverter) Pod(ctx context.Context, input types.PodType) (*store.P
 		Id:        store.ObjectID(),
 		NodeId:    nid,
 		K8:        *input,
-		Ownership: store.ExtractOwnership(input.ObjectMeta.Labels),
+		Ownership: store.ExtractOwnership(input.Labels),
 		Runtime:   store.Runtime(c.runtime),
 	}
 
@@ -165,7 +165,7 @@ func (c *StoreConverter) handleProjectedToken(ctx context.Context, input types.V
 	var sourcePath string
 	for _, proj := range volume.Projected.Sources {
 		if proj.ServiceAccountToken != nil {
-			sourcePath = libkube.ServiceAccountTokenPath(string(pod.K8.ObjectMeta.UID), input.Name)
+			sourcePath = libkube.ServiceAccountTokenPath(string(pod.K8.UID), input.Name)
 
 			break
 		}
@@ -206,6 +206,10 @@ func (c *StoreConverter) Volume(ctx context.Context, input types.VolumeMountType
 
 			// Only a subset of volumes are currently supported
 			switch {
+			case v.Secret != nil:
+				output.Type = shared.VolumeTypeSecret
+				output.TargetName = v.Secret.SecretName
+				output.TargetNamespace = pod.K8.Namespace
 			case v.HostPath != nil:
 				output.Type = shared.VolumeTypeHost
 				output.SourcePath = v.HostPath.Path
@@ -241,7 +245,7 @@ func (c *StoreConverter) Role(_ context.Context, input types.RoleType) (*store.R
 		IsNamespaced: true,
 		Namespace:    input.Namespace,
 		Rules:        input.Rules,
-		Ownership:    store.ExtractOwnership(input.ObjectMeta.Labels),
+		Ownership:    store.ExtractOwnership(input.Labels),
 		Runtime:      store.Runtime(c.runtime),
 	}, nil
 }
@@ -254,7 +258,7 @@ func (c *StoreConverter) ClusterRole(_ context.Context, input types.ClusterRoleT
 		IsNamespaced: false,
 		Namespace:    "",
 		Rules:        input.Rules,
-		Ownership:    store.ExtractOwnership(input.ObjectMeta.Labels),
+		Ownership:    store.ExtractOwnership(input.Labels),
 		Runtime:      store.Runtime(c.runtime),
 	}, nil
 }
@@ -304,12 +308,16 @@ func (c *StoreConverter) RoleBinding(ctx context.Context, input types.RoleBindin
 		IsNamespaced: true,
 		Namespace:    input.Namespace,
 		Subjects:     make([]store.BindSubject, 0, len(subj)),
-		Ownership:    store.ExtractOwnership(input.ObjectMeta.Labels),
+		Ownership:    store.ExtractOwnership(input.Labels),
 		Runtime:      store.Runtime(c.runtime),
 		K8:           input.RoleRef,
 	}
 
 	for _, s := range subj {
+		// ServiceAccount are bounded to a namespace
+		if s.Namespace == "" && s.Kind == rbacv1.ServiceAccountKind {
+			s.Namespace = input.Namespace
+		}
 		s, err := c.convertSubject(ctx, s)
 		if err != nil {
 			return nil, fmt.Errorf("role binding subject convert: %w", err)
@@ -347,7 +355,7 @@ func (c *StoreConverter) ClusterRoleBinding(ctx context.Context, input types.Clu
 		IsNamespaced: false,
 		Namespace:    "",
 		Subjects:     make([]store.BindSubject, 0, len(subj)),
-		Ownership:    store.ExtractOwnership(input.ObjectMeta.Labels),
+		Ownership:    store.ExtractOwnership(input.Labels),
 		Runtime:      store.Runtime(c.runtime),
 		K8:           input.RoleRef,
 	}
@@ -366,7 +374,7 @@ func (c *StoreConverter) ClusterRoleBinding(ctx context.Context, input types.Clu
 
 // Identity returns the store representation of a K8s identity role binding from an input store BindSubject (subfield of RoleBinding) object.
 // NOTE: store.Identity does not map directly to a K8s API object and instead derives from the subject of a role binding.
-func (c *StoreConverter) Identity(_ context.Context, input *store.BindSubject, parent *store.RoleBinding) (*store.Identity, error) {
+func (c *StoreConverter) Identity(ctx context.Context, input *store.BindSubject, parent *store.RoleBinding) (*store.Identity, error) {
 	output := &store.Identity{
 		Id:        input.IdentityId,
 		Name:      input.Subject.Name,
@@ -374,6 +382,21 @@ func (c *StoreConverter) Identity(_ context.Context, input *store.BindSubject, p
 		Type:      input.Subject.Kind,
 		Ownership: parent.Ownership,
 		Runtime:   store.Runtime(c.runtime),
+	}
+
+	// ServiceAccount are bounded to a namespace
+	// In a rolebindings definition, namespace is optional for ServiceAccount
+	// Since we are parsing rolebindings to get the list of ServiceAccount we need to fix the ServiceAccount namespace if it is missing
+	if input.Subject.Kind == "ServiceAccount" && len(input.Subject.Namespace) == 0 {
+		// This should never happen but ¯\_(ツ)_/¯
+		if len(parent.Namespace) == 0 {
+			log.Trace(ctx).Errorf("Namespace not found for service account (%s), using input(rolebinding) namespace (%s) for PermissionSet (%s)\n", input.Subject.Name, parent.Namespace, input.IdentityId)
+		} else {
+			output.Namespace = parent.Namespace
+			output.IsNamespaced = true
+		}
+
+		return output, nil
 	}
 
 	if len(input.Subject.Namespace) != 0 {
@@ -530,7 +553,7 @@ func (c *StoreConverter) Endpoint(_ context.Context, addr discoveryv1.Endpoint,
 		AddressType:  parent.AddressType,
 		Backend:      addr,
 		Port:         port,
-		Ownership:    store.ExtractOwnership(parent.ObjectMeta.Labels),
+		Ownership:    store.ExtractOwnership(parent.Labels),
 		Runtime:      store.Runtime(c.runtime),
 		K8:           parent.ObjectMeta,
 

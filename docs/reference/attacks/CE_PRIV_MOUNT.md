@@ -11,8 +11,8 @@ mitreAttackTactic: TA0004 - Privilege escalation
 
 # CE_PRIV_MOUNT
 
-| Source                                    | Destination                           | MITRE                            |
-| ----------------------------------------- | ------------------------------------- |----------------------------------|
+| Source                                | Destination                 | MITRE ATT&CK                                                        |
+| ------------------------------------- | --------------------------- | ------------------------------------------------------------------- |
 | [Container](../entities/container.md) | [Node](../entities/node.md) | [Escape to Host, T1611](https://attack.mitre.org/techniques/T1611/) |
 
 Mount the host disk and gain access to the host via arbitrary filesystem write
@@ -59,14 +59,14 @@ mount /dev/vda1 /mnt/hostfs
 ls -lah /mnt/hostfs/
 ```
 
-With the disk now writeable from the container, follow the steps in [EXPLOIT_HOST_WRITE](./EXPLOIT_HOST_WRITE.md#Exploitation).
+With the disk now writeable from the container, follow the steps in [EXPLOIT_HOST_WRITE](./EXPLOIT_HOST_WRITE.md#exploitation).
 
 ## Defences
 
 ### Monitoring
 
 + Monitor `mount` events originating from containers
-+ See [EXPLOIT_HOST_WRITE](./EXPLOIT_HOST_WRITE.md#Defences)
++ See [EXPLOIT_HOST_WRITE](./EXPLOIT_HOST_WRITE.md#defences)
 
 ### Implement security policies
 

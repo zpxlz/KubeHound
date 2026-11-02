@@ -1,7 +1,6 @@
 package writer
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/DataDog/KubeHound/pkg/collector"
-	"github.com/DataDog/KubeHound/pkg/telemetry/log"
 	discoveryv1 "k8s.io/api/discovery/v1"
 )
 
@@ -20,12 +18,9 @@ const (
 
 func TestFileWriter_Write(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 
-	tmpDir, err := os.MkdirTemp("/tmp/", "kh-unit-tests-*")
-	if err != nil {
-		log.I.Fatalf(err.Error())
-	}
+	tmpDir := t.TempDir()
 
 	fileNameK8sObject := collector.EndpointPath
 	dummyK8sObject := []*discoveryv1.EndpointSlice{
@@ -33,7 +28,8 @@ func TestFileWriter_Write(t *testing.T) {
 		collector.FakeEndpoint("name2", dummyNamespace, []int32{int32(443)}),
 	}
 
-	writer, err := NewFileWriter(ctx, tmpDir, fileNameK8sObject)
+	directoryOutput := path.Join(tmpDir, fileNameK8sObject)
+	writer, err := NewFileWriter(ctx, directoryOutput)
 	if err != nil {
 		t.Fatalf("failed to create file writer: %v", err)
 	}

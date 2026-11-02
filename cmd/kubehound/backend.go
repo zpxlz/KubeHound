@@ -1,14 +1,19 @@
+//go:build no_backend
+
 package main
 
 import (
-	docker "github.com/DataDog/KubeHound/pkg/backend"
+	"github.com/DataDog/KubeHound/pkg/backend"
 	"github.com/spf13/cobra"
 )
 
 var (
-	Backend     *docker.Backend
+	Backend     *backend.Backend
 	hard        bool
 	composePath []string
+
+	uiProfile = backend.DefaultUIProfile
+	uiInvana  bool
 )
 
 var (
@@ -17,7 +22,11 @@ var (
 		Short: "Handle the kubehound stack",
 		Long:  `Handle the kubehound stack - docker compose based stack for kubehound services (mongodb, graphdb and UI)`,
 		PersistentPreRunE: func(cobraCmd *cobra.Command, args []string) error {
-			return docker.NewBackend(cobraCmd.Context(), composePath)
+			if uiInvana {
+				uiProfile = append(uiProfile, "invana")
+			}
+
+			return backend.NewBackend(cobraCmd.Context(), composePath, uiProfile)
 		},
 	}
 
@@ -26,7 +35,7 @@ var (
 		Short: "Spawn the kubehound stack",
 		Long:  `Spawn the kubehound stack`,
 		RunE: func(cobraCmd *cobra.Command, args []string) error {
-			return docker.Up(cobraCmd.Context())
+			return backend.Up(cobraCmd.Context())
 		},
 	}
 
@@ -35,7 +44,7 @@ var (
 		Short: "Wipe the persisted backend data",
 		Long:  `Wipe the persisted backend data`,
 		RunE: func(cobraCmd *cobra.Command, args []string) error {
-			return docker.Wipe(cobraCmd.Context())
+			return backend.Wipe(cobraCmd.Context())
 		},
 	}
 
@@ -44,7 +53,7 @@ var (
 		Short: "Tear down the kubehound stack",
 		Long:  `Tear down the kubehound stack`,
 		RunE: func(cobraCmd *cobra.Command, args []string) error {
-			return docker.Down(cobraCmd.Context())
+			return backend.Down(cobraCmd.Context())
 		},
 	}
 
@@ -53,19 +62,19 @@ var (
 		Short: "Restart the kubehound stack",
 		Long:  `Restart the kubehound stack`,
 		RunE: func(cobraCmd *cobra.Command, args []string) error {
-			err := docker.Down(cobraCmd.Context())
+			err := backend.Down(cobraCmd.Context())
 			if err != nil {
 				return err
 			}
 
 			if hard {
-				err = docker.Wipe(cobraCmd.Context())
+				err = backend.Wipe(cobraCmd.Context())
 				if err != nil {
 					return err
 				}
 			}
 
-			return docker.Reset(cobraCmd.Context())
+			return backend.Reset(cobraCmd.Context())
 		},
 	}
 )
@@ -78,5 +87,6 @@ func init() {
 
 	backendCmd.AddCommand(backendDownCmd)
 	backendCmd.PersistentFlags().StringSliceVarP(&composePath, "file", "f", composePath, "Compose configuration files")
+	backendCmd.PersistentFlags().BoolVar(&uiInvana, "invana", false, "Activate Invana front end as KubeHound UI alternative")
 	rootCmd.AddCommand(backendCmd)
 }

@@ -5,27 +5,27 @@ title: CE_VAR_LOG_SYMLINK
 <!--
 id: CE_VAR_LOG_SYMLINK
 name: "Arbitrary file reads on the host"
-mitreAttackTechnique: T1552 - Unsecured Credentials
-mitreAttackTactic: TA0006 - Credential Access
+mitreAttackTechnique: T1611 - Escape to host
+mitreAttackTactic: TA0004 - Privilege escalation
 -->
 
 # CE_VAR_LOG_SYMLINK
 
-| Source                                    | Destination                           | MITRE                            |
-| ----------------------------------------- | ------------------------------------- |----------------------------------|
+| Source                                | Destination                 | MITRE ATT&CK                                                        |
+| ------------------------------------- | --------------------------- | ------------------------------------------------------------------- |
 | [Container](../entities/container.md) | [Node](../entities/node.md) | [Escape to Host, T1611](https://attack.mitre.org/techniques/T1611/) |
 
 Arbitrary file reads on the host from a node via an exposed `/var/log` mount.
 
 ## Details
 
-A pod running as root and with a mount point to the node’s `/var/log` directory can expose the entire contents of its host filesystem to any user who has access to its logs, enabling an attacker to read arbitrary files on the host node. See [Kubernetes Pod Escape Using Log Mounts](https://blog.aquasec.com/kubernetes-security-pod-escape-log-mounts) for a more detailed explanation of the technique.
+A pod running as root and with a mount point to the node's `/var/log` directory can expose the entire contents of its host filesystem to any user who has access to its logs, enabling an attacker to read arbitrary files on the host node. See [Kubernetes Pod Escape Using Log Mounts](https://blog.aquasec.com/kubernetes-security-pod-escape-log-mounts) for a more detailed explanation of the technique.
 
 ## Prerequisites
 
 Execution as root within a container process with the host `/var/log/` (or any parent directory) mounted inside the container.
 
-See the [example pod spec](https://github.com/DataDog/KubeHound/tree/main/test/setup/test-cluster/attacks/TOKEN_VAR_LOG_SYMLINK.yaml).
+See the [example pod spec](https://github.com/DataDog/KubeHound/tree/main/test/setup/test-cluster/attacks/CE_VAR_LOG_SYMLINK.yaml).
 
 ## Checks
 
@@ -65,7 +65,7 @@ Setup the symlink:
 ln -s / /host/var/log/root_link
 ```
 
-Call the kubelet API to read the “logs” and extract pod service account tokens:
+Call the kubelet API to read the "logs" and extract pod service account tokens:
 
 ```bash
 $ KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)

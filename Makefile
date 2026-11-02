@@ -10,10 +10,18 @@ COMMIT := $(shell git rev-parse --short HEAD)
 DATE := $(shell git log -1 --format=%cd --date=format:"%Y%m%d")
 
 BUILD_VERSION ?= $(shell git describe --match 'v[0-9]*' --dirty --always --tags)
+BUILD_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 BUILD_ARCH := $(shell go env GOARCH)
 BUILD_OS := $(shell go env GOOS)
 
-BUILD_FLAGS := -ldflags="-X github.com/DataDog/KubeHound/pkg/config.BuildVersion=$(BUILD_VERSION) -X github.com/DataDog/KubeHound/pkg/config.BuildArch=$(BUILD_ARCH) -X github.com/DataDog/KubeHound/pkg/config.BuildOs=$(BUILD_OS) -s -w"
+BUILD_FLAGS := -ldflags="${GO_BUILDTAGS} -X github.com/DataDog/KubeHound/pkg/config.BuildVersion=$(BUILD_VERSION) -X github.com/DataDog/KubeHound/pkg/config.BuildBranch=$(BUILD_BRANCH) -X github.com/DataDog/KubeHound/pkg/config.BuildArch=$(BUILD_ARCH) -X github.com/DataDog/KubeHound/pkg/config.BuildOs=$(BUILD_OS)"
+
+# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
+ifeq (,$(shell go env GOBIN))
+GOBIN=$(shell go env GOPATH)/bin
+else
+GOBIN=$(shell go env GOBIN)
+endif
 
 # Need to save the MAKEFILE_LIST variable before the including the env var files
 HELP_MAKEFILE_LIST := $(MAKEFILE_LIST)
@@ -58,11 +66,11 @@ generate: ## Generate code for the application
 
 .PHONY: build
 build: ## Build the application
-	go build $(BUILD_FLAGS) -o "$(or $(DESTDIR),./bin/build)/kubehound$(BINARY_EXT)" ./cmd/kubehound/
+	go build $(BUILD_FLAGS) -o "$(or $(DESTDIR),./bin/build)/kubehound$(BINARY_EXT)" -tags no_backend ./cmd/kubehound/
 
 .PHONY: binary
 binary:
-	$(BUILDX_CMD) bake binary-with-coverage
+	$(BUILDX_CMD) bake binary
 
 .PHONY: lint
 lint:
@@ -78,10 +86,10 @@ cache-clear: ## Clear the builder cache
 
 .PHONY: kubehound
 kubehound: | build ## Prepare kubehound (build go binary, deploy backend)
-	./bin/kubehound
+	./bin/build/kubehound
 
 .PHONY: test
-test: ## Run the full suite of unit tests 
+test: ## Run the full suite of unit tests
 	cd pkg && go test -count=1 -race $(BUILD_FLAGS) ./...
 
 .PHONY: system-test
@@ -113,7 +121,7 @@ local-cluster-destroy: ## Destroy the local kind cluster
 
 .PHONY: sample-graph
 sample-graph: | local-cluster-deploy build ## Create the kind cluster, start the backend, run the application, delete the cluster
-	cd test/system && export KUBECONFIG=$(ROOT_DIR)/test/setup/${KIND_KUBECONFIG} && $(ROOT_DIR)/bin/kubehound
+	cd test/system && export KUBECONFIG=$(ROOT_DIR)/test/setup/${KIND_KUBECONFIG} && $(ROOT_DIR)/bin/build/kubehound
 	bash test/setup/manage-cluster.sh destroy
 
 .PHONY: help
@@ -122,17 +130,12 @@ help: ## Show this help
 
 .PHONY: thirdparty-licenses
 thirdparty-licenses: ## Generate the list of 3rd party dependencies and write to LICENSE-3rdparty.csv
-	go get github.com/google/go-licenses
-	go install github.com/google/go-licenses
-	$(GOPATH)/bin/go-licenses csv github.com/DataDog/KubeHound/cmd/kubehound | sort > $(ROOT_DIR)/LICENSE-3rdparty.csv.raw
+	go install github.com/google/go-licenses@latest
+	$(GOBIN)/go-licenses csv github.com/DataDog/KubeHound/cmd/kubehound | sort > $(ROOT_DIR)/LICENSE-3rdparty.csv.raw
 	python scripts/enrich-third-party-licences.py $(ROOT_DIR)/LICENSE-3rdparty.csv.raw > $(ROOT_DIR)/LICENSE-3rdparty.csv
 	rm -f LICENSE-3rdparty.csv.raw
 
 .PHONY: local-wiki
 local-wiki: ## Generate and serve the mkdocs wiki on localhost
-	poetry install || pip install mkdocs-material mkdocs-awesome-pages-plugin markdown-captions
-	poetry run mkdocs serve || mksdocs serve
-
-.PHONY: local-release
-local-release: ## Generate release packages locally via goreleaser
-	goreleaser release --snapshot --clean --config .goreleaser.yaml
+	poetry install --no-root || pip install mkdocs-material mkdocs-awesome-pages-plugin markdown-captions
+	poetry run mkdocs serve || mkdocs serve

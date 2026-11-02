@@ -1,7 +1,6 @@
 package dump
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
@@ -19,10 +18,10 @@ const (
 	mockDirectoryOutput = "/tmp"
 )
 
-func TestNewDumpIngestor(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
+func TestNewDumpIngestor(t *testing.T) { //nolint:paralleltest,nolintlint
+	ctx := t.Context()
 
+	t.Setenv("KUBECONFIG", "./testdata/kube-config")
 	clientset := fake.NewSimpleClientset()
 	collectorClient := collector.NewTestK8sAPICollector(ctx, clientset)
 
@@ -48,8 +47,6 @@ func TestNewDumpIngestor(t *testing.T) {
 				runID:           config.NewRunID(),
 			},
 			want: &DumpIngestor{
-				directoryOutput: mockDirectoryOutput,
-
 				writer: &writer.FileWriter{},
 			},
 			wantErr: false,
@@ -63,16 +60,16 @@ func TestNewDumpIngestor(t *testing.T) {
 				runID:           config.NewRunID(),
 			},
 			want: &DumpIngestor{
-				directoryOutput: mockDirectoryOutput,
-				writer:          &writer.TarWriter{},
+				writer: &writer.TarWriter{},
 			},
 			wantErr: false,
 		},
 	}
-	for _, tt := range tests {
-		tt := tt
+	// Can not run parallel tests as the environment variable KUBECONFIG is set
+	// t.Setenv is not compatible with parallel tests
+	for _, tt := range tests { //nolint:paralleltest
+
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			got, err := NewDumpIngestor(ctx, tt.args.collectorClient, tt.args.compression, tt.args.directoryOutput, tt.args.runID)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewDumpIngestorsss() error = %v, wantErr %v", err, tt.wantErr)
@@ -83,17 +80,13 @@ func TestNewDumpIngestor(t *testing.T) {
 			if !assert.Equal(t, reflect.TypeOf(got.writer), reflect.TypeOf(tt.want.writer)) {
 				t.Errorf("NewDumpIngestor() = %v, want %v", reflect.TypeOf(got.writer), reflect.TypeOf(tt.want.writer))
 			}
-
-			if !assert.Equal(t, got.directoryOutput, tt.want.directoryOutput) {
-				t.Errorf("NewDumpIngestor() = %v, want %v", got.directoryOutput, tt.want.directoryOutput)
-			}
 		})
 	}
 }
 
 func TestDumpIngestor_DumpK8sObjects(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	writerOutputPath := "/tmp/cluster_name"
 	singleThreadedPipelineLive := func(t *testing.T) (*mockwriter.DumperWriter, collector.CollectorClient) {
@@ -133,7 +126,6 @@ func TestDumpIngestor_DumpK8sObjects(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			mDumpWriter, mCollectorClient := tt.testfct(t)

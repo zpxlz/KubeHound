@@ -26,7 +26,7 @@ func TestClusterRoleBindingIngest_Pipeline(t *testing.T) {
 
 	crbi := &ClusterRoleBindingIngest{}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	fakeCrb, err := loadTestObject[types.ClusterRoleBindingType]("testdata/clusterrolebinding.json")
 	assert.NoError(t, err)
 
@@ -153,8 +153,10 @@ func TestClusterRoleBindingIngest_Pipeline(t *testing.T) {
 				Edge: config.EdgeBuilderConfig{},
 			},
 			Dynamic: config.DynamicConfig{
-				RunID:       testID,
-				ClusterName: "test-cluster",
+				RunID: testID,
+				Cluster: config.DynamicClusterInfo{
+					Name: "test-cluster",
+				},
 			},
 		},
 	}

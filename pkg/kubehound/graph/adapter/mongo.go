@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"errors"
 
 	"github.com/DataDog/KubeHound/pkg/kubehound/graph/types"
 	"github.com/DataDog/KubeHound/pkg/kubehound/storage/storedb"
@@ -10,10 +11,11 @@ import (
 )
 
 // MongoDB is a helper function to retrieve the store database object from a mongoDB provider.
-func MongoDB(store storedb.Provider) *mongo.Database {
+func MongoDB(ctx context.Context, store storedb.Provider) *mongo.Database {
+	l := log.Logger(ctx)
 	db, ok := store.Reader().(*mongo.Database)
 	if !ok {
-		log.I.Fatalf("Invalid database provider type. Expected *mongo.Client, got %T", store.Reader())
+		l.Fatalf("Invalid database provider type. Expected *mongo.Client, got %T", store.Reader())
 	}
 
 	return db
@@ -23,18 +25,21 @@ func MongoDB(store storedb.Provider) *mongo.Database {
 func MongoCursorHandler[T any](ctx context.Context, cur *mongo.Cursor,
 	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback) error {
 
+	var lastErr error
 	for cur.Next(ctx) {
 		var entry T
-		err := cur.Decode(&entry)
-		if err != nil {
-			return err
+		lastErr = cur.Decode(&entry)
+		if lastErr != nil {
+			break
 		}
 
-		err = callback(ctx, &entry)
-		if err != nil {
-			return err
+		lastErr = callback(ctx, &entry)
+		if lastErr != nil {
+			break
 		}
 	}
+	err := complete(ctx)
+	err = errors.Join(err, lastErr)
 
-	return complete(ctx)
+	return err
 }

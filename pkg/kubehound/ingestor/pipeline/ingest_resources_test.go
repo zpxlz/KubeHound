@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -42,7 +41,7 @@ func loadTestObject[T types.InputType](filename string) (T, error) {
 func TestIngestResources_Initializer(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	client := collector.NewCollectorClient(t)
 	c := cache.NewCacheProvider(t)
@@ -115,7 +114,7 @@ func TestIngestResources_Initializer(t *testing.T) {
 func TestIngestResources_FlushErrors(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	client := collector.NewCollectorClient(t)
 	c := cache.NewCacheProvider(t)
 	gdb := graphdb.NewProvider(t)
@@ -128,8 +127,10 @@ func TestIngestResources_FlushErrors(t *testing.T) {
 		StoreDB:   sdb,
 		Config: &config.KubehoundConfig{
 			Dynamic: config.DynamicConfig{
-				ClusterName: "test-clister",
-				RunID:       config.NewRunID(),
+				Cluster: config.DynamicClusterInfo{
+					Name: "test-cluster",
+				},
+				RunID: config.NewRunID(),
 			},
 		},
 	}
@@ -153,7 +154,7 @@ func TestIngestResources_FlushErrors(t *testing.T) {
 func TestIngestResources_CloseErrors(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	client := collector.NewCollectorClient(t)
 	c := cache.NewCacheProvider(t)
 	gdb := graphdb.NewProvider(t)
@@ -190,7 +191,7 @@ func TestIngestResources_CloseErrors(t *testing.T) {
 func TestIngestResources_CloseIdempotent(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	client := collector.NewCollectorClient(t)
 	c := cache.NewCacheProvider(t)
 	gdb := graphdb.NewProvider(t)

@@ -36,26 +36,37 @@ func (e *VolumeAccess) Name() string {
 	return "VolumeAccess"
 }
 
+func (e *VolumeAccess) AttckTechniqueID() AttckTechniqueID {
+	return AttckTechniqueContainerAndResourceDiscovery
+}
+
+func (e *VolumeAccess) AttckTacticID() AttckTacticID {
+	return AttckTacticDiscovery
+}
+
 func (e *VolumeAccess) Processor(ctx context.Context, oic *converter.ObjectIDConverter, entry any) (any, error) {
 	typed, ok := entry.(*volumeAccessGroup)
 	if !ok {
 		return nil, fmt.Errorf("invalid type passed to processor: %T", entry)
 	}
 
-	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.Node, typed.Volume)
+	return adapter.GremlinEdgeProcessor(ctx, oic, e.Label(), typed.Node, typed.Volume, map[string]any{
+		"attckTechniqueID": string(e.AttckTechniqueID()),
+		"attckTacticID":    string(e.AttckTacticID()),
+	})
 }
 
 func (e *VolumeAccess) Stream(ctx context.Context, store storedb.Provider, _ cache.CacheReader,
 	callback types.ProcessEntryCallback, complete types.CompleteQueryCallback) error {
 
-	volumes := adapter.MongoDB(store).Collection(collections.VolumeName)
+	volumes := adapter.MongoDB(ctx, store).Collection(collections.VolumeName)
 
 	// We just need a 1:1 mapping of the node and volume to create this edge
 	projection := bson.M{"_id": 1, "node_id": 1}
 
 	filter := bson.M{
-		"runtime.runID":   e.runtime.RunID.String(),
-		"runtime.cluster": e.runtime.ClusterName,
+		"runtime.runID":        e.runtime.RunID.String(),
+		"runtime.cluster.name": e.runtime.Cluster.Name,
 	}
 
 	cur, err := volumes.Find(ctx, filter, options.Find().SetProjection(projection))

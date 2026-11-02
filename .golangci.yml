@@ -1,11 +1,6 @@
-run:
-  # Default: 1m
-  timeout: 5m
-
+version: "2"
 linters:
-  disable-all: true
-  # Enable specific linter
-  # https://golangci-lint.run/usage/linters/#enabled-by-default
+  default: none
   enable:
     - asasalint
     - asciicheck
@@ -13,7 +8,7 @@ linters:
     - bodyclose
     - containedctx
     - contextcheck
-    # - cyclop
+    - copyloopvar
     - decorder
     - dogsled
     - dupword
@@ -22,37 +17,24 @@ linters:
     - errchkjson
     - errname
     - errorlint
-    - execinquery
     - exhaustive
-    # - exhaustruct
-    - exportloopref
     - forbidigo
     - forcetypeassert
-    # - gci
     - ginkgolinter
     - gocheckcompilerdirectives
-    # - gochecknoglobals
     - gocognit
     - goconst
     - gocritic
     - gocyclo
-    # - goerr113 # Would probably be best. But lets ignore for now
-    - gofmt
-    # - gofumpt
     - goheader
-    - goimports
-    - gomnd
-    - gomoddirectives
     - gomodguard
     - goprintffuncname
     - gosec
-    - gosimple
     - govet
     - grouper
     - importas
     - ineffassign
     - interfacebloat
-    # - ireturn
     - loggercheck
     - maintidx
     - makezero
@@ -72,21 +54,36 @@ linters:
     - predeclared
     - promlinter
     - reassign
-    # - revive
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
-    # - stylecheck TODO reeanble
-    - tenv
     - testableexamples
-    # - testpackage
     - thelper
     - tparallel
-    - typecheck
     - unconvert
     - unparam
     - unused
     - usestdlibvars
+    - usetesting
     - wastedassign
-    # - whitespace
-    # - wrapcheck #TODO: add it back later potentially?
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -1,7 +1,6 @@
 package writer
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -14,23 +13,15 @@ import (
 	"github.com/DataDog/KubeHound/pkg/collector"
 	"github.com/DataDog/KubeHound/pkg/config"
 	"github.com/DataDog/KubeHound/pkg/ingestor/puller"
-	"github.com/DataDog/KubeHound/pkg/telemetry/log"
 	discoveryv1 "k8s.io/api/discovery/v1"
 )
 
 func TestTarWriter_Write(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 
-	tmpTarFileDir, err := os.MkdirTemp("/tmp/", "kh-unit-tests-*")
-	if err != nil {
-		log.I.Fatalf(err.Error())
-	}
-
-	tmpTarExtractDir, err := os.MkdirTemp("/tmp/", "kh-unit-tests-*")
-	if err != nil {
-		log.I.Fatalf(err.Error())
-	}
+	tmpTarFileDir := t.TempDir()
+	tmpTarExtractDir := t.TempDir()
 
 	// Constructing a buffer of Endpoints objects in different namespaces/files
 	tarBundle := make(map[string]any)
@@ -52,7 +43,8 @@ func TestTarWriter_Write(t *testing.T) {
 	vfsResourcePath2 := path.Join(dummyNamespace2, fileNameK8sObject)
 	tarBundle[vfsResourcePath2] = dummyK8sObject2
 
-	writer, err := NewTarWriter(ctx, tmpTarFileDir, fileNameK8sObject)
+	tarPath := path.Join(tmpTarFileDir, fileNameK8sObject)
+	writer, err := NewTarWriter(ctx, tarPath)
 	if err != nil {
 		t.Fatalf("failed to create file writer: %v", err)
 	}
@@ -71,7 +63,8 @@ func TestTarWriter_Write(t *testing.T) {
 	writer.Flush(ctx)
 	writer.Close(ctx)
 
-	err = puller.ExtractTarGz(writer.OutputPath(), tmpTarExtractDir, config.DefaultMaxArchiveSize)
+	dryRun := false
+	err = puller.ExtractTarGz(ctx, dryRun, writer.OutputPath(), tmpTarExtractDir, config.DefaultMaxArchiveSize)
 	if err != nil {
 		t.Fatalf("failed to extract tar.gz: %v", err)
 	}
